@@ -15,14 +15,15 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 COPY . .
 
 # Normalize Windows line endings in scripts (CRLF -> LF)
-RUN sed -i 's/\r$//' /var/www/scripts/*.sh
+#RUN sed -i 's/\r$//' /var/www/scripts/*.sh
 
 # Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader --ignore-platform-reqs
 
 # Set file permissions
-RUN chown -R www-data:www-data /var/www \
-    && chmod +x /var/www/scripts/*.sh
+RUN chown -R www-data:www-data /var/www 
+#\
+    #&& chmod +x /var/www/scripts/*.sh
 
 # Expose Laravel dev port
 EXPOSE 8000
