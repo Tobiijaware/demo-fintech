@@ -5,8 +5,10 @@ WORKDIR /var/www
 
 # Install system dependencies and PHP extensions
 RUN apt-get update && apt-get install -y \
-    git curl unzip zip libzip-dev libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql zip
+    git curl unzip zip libzip-dev libpq-dev default-libmysqlclient-dev \
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql zip \
+    && mkdir -p /etc/ssl/certs/rds \
+    && curl -fsSL -o /etc/ssl/certs/rds/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
