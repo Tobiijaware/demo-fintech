@@ -54,18 +54,10 @@ class RegistrationService
 
         $user = DB::transaction(function () use ($data, $email) {
             $user = User::query()->create([
-                'firstname' => \sanitize_name($data['firstname']),
-                'lastname' => \sanitize_name($data['lastname']),
-                'gender' => $data['gender'],
-                'dob' => $data['dob'],
-                'phone' => $data['phone'],
                 'email' => $email,
+                'password' => $data['password'],
                 'role' => UserRole::Customer,
                 'status' => UserStatus::Pending,
-                'bvn' => $data['bvn'] ?? null,
-                'nin' => $data['nin'] ?? null,
-                'pin' => $data['pin'],
-                'password' => $data['password'],
                 'email_verified_at' => now(),
             ]);
 
