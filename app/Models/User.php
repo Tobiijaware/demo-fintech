@@ -84,4 +84,14 @@ class User extends Authenticatable implements JWTSubject
     {
         return trim("{$this->firstname} {$this->lastname}");
     }
+
+    public function hasPinSetup(): bool
+    {
+        return ! empty($this->pin);
+    }
+
+    public function getPinSetUpAttribute(): bool
+    {
+        return $this->hasPinSetup();
+    }
 }

@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\SetupPinRequest;
 use App\Models\User;
+use App\Services\Auth\PinService;
 use Illuminate\Http\JsonResponse;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends ApiController
 {
+    public function __construct(private PinService $pinService) {}
+
     public function login(LoginRequest $request): JsonResponse
     {
         if (! $token = auth('api')->attempt($request->only('email', 'password'))) {
@@ -21,8 +25,16 @@ class AuthController extends ApiController
     public function me(): JsonResponse
     {
         $user = auth('api')->user()->load(['wallet', 'kycVerifications']);
+        $user->append('pin_set_up');
 
         return $this->success($user);
+    }
+
+    public function setupPin(SetupPinRequest $request): JsonResponse
+    {
+        $this->pinService->setup(auth('api')->user(), $request->validated('pin'));
+
+        return $this->success(['pin_set_up' => true], 'Transaction PIN set successfully.', 201);
     }
 
     public function refresh(): JsonResponse
@@ -47,6 +59,8 @@ class AuthController extends ApiController
      */
     private function tokenPayload(string $token, User $user): array
     {
+        $user->append('pin_set_up');
+
         return [
             'access_token' => $token,
             'token_type' => 'bearer',

@@ -3,6 +3,7 @@
 namespace App\Http\Responses;
 
 use App\Dtos\ApiResponseDTO;
+use App\Exceptions\PinException;
 use App\Exceptions\RegistrationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -26,7 +27,7 @@ class ApiExceptionResponder
             return null;
         }
 
-        if ($e instanceof RegistrationException) {
+        if ($e instanceof RegistrationException || $e instanceof PinException) {
             return ApiResponseDTO::error($e->getMessage(), $e->statusCode)->toResponse();
         }
 
