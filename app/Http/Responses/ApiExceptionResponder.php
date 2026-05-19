@@ -3,6 +3,7 @@
 namespace App\Http\Responses;
 
 use App\Dtos\ApiResponseDTO;
+use App\Exceptions\DojahException;
 use App\Exceptions\PinException;
 use App\Exceptions\RegistrationException;
 use Illuminate\Auth\AuthenticationException;
@@ -29,6 +30,10 @@ class ApiExceptionResponder
 
         if ($e instanceof RegistrationException || $e instanceof PinException) {
             return ApiResponseDTO::error($e->getMessage(), $e->statusCode)->toResponse();
+        }
+
+        if ($e instanceof DojahException) {
+            return ApiResponseDTO::error($e->getMessage(), $e->statusCode, $e->dojahResponse)->toResponse();
         }
 
         if ($e instanceof ValidationException) {
