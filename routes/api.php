@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BankController;
 use App\Http\Controllers\Api\KycController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\WalletController;
@@ -27,6 +28,8 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('auth:api')->group(function () {
         Route::get('wallet/balance', [WalletController::class, 'balance']);
+        Route::get('banks', [BankController::class, 'index']);
+        Route::post('banks/resolve', [BankController::class, 'resolve']);
 
         Route::prefix('kyc')->group(function () {
             Route::post('bvn/validate', [KycController::class, 'validateBvn']);
