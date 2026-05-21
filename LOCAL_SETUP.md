@@ -254,6 +254,11 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 | SSL certificate errors | Set `MYSQL_ATTR_SSL_CA` and see SSL section above |
 | `php: command not found` | Install PHP: `brew install php` |
 | Migrations fail on remote DB | DB user needs CREATE/ALTER rights, or run migrations from CI |
+| CORS blocked from Vercel back-office | Redeploy API after updating `config/cors.php`; allows `https://demo-backoffice-lac.vercel.app` |
+
+### CORS (deployed API + Vercel frontend)
+
+The browser blocks `https://demo-backoffice-lac.vercel.app` → `https://demo-fintech.onrender.com` unless the API returns `Access-Control-Allow-Origin`. Defaults live in `config/cors.php` (includes that Vercel URL + `*.vercel.app` previews). **Redeploy the backend on Render** after pulling this change, then run `php artisan config:clear` on deploy if you cache config.
 
 ---
 
