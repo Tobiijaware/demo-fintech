@@ -6,7 +6,9 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Exceptions\RegistrationException;
 use App\Models\User;
+use App\Enums\UserType;
 use App\Services\Kyc\KycService;
+use App\Services\Onboarding\OnboardingApplicationService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Support\Facades\DB;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
@@ -17,6 +19,7 @@ class RegistrationService
         private EmailVerificationService $emailVerificationService,
         private WalletService $walletService,
         private KycService $kycService,
+        private OnboardingApplicationService $onboardingService,
     ) {}
 
     public function sendVerificationCode(string $email): void
@@ -56,6 +59,7 @@ class RegistrationService
             $user = User::query()->create([
                 'email' => $email,
                 'password' => $data['password'],
+                'user_type' => UserType::Customer,
                 'role' => UserRole::Customer,
                 'status' => UserStatus::Pending,
                 'email_verified_at' => now(),
@@ -63,8 +67,9 @@ class RegistrationService
 
             $wallet = $this->walletService->createNgnWallet($user);
             $kyc = $this->kycService->initializeForUser($user);
+            $onboarding = $this->onboardingService->createFromMobileCustomer($user);
 
-            return compact('user', 'wallet', 'kyc');
+            return compact('user', 'wallet', 'kyc', 'onboarding');
         });
 
         $token = JWTAuth::fromUser($user['user']);

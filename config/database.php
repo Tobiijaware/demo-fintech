@@ -103,7 +103,7 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'options' => extension_loaded('pdo_pgsql') ? array_filter([
-                PDO::PGSQL_ATTR_DISABLE_PREPARES => true,
+                (PHP_VERSION_ID >= 80500 ? \Pdo\Pgsql::ATTR_DISABLE_PREPARES : PDO::PGSQL_ATTR_DISABLE_PREPARES) => true,
             ]) : [],
         ],
 

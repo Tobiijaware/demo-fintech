@@ -18,6 +18,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
+use InvalidArgumentException;
 use Throwable;
 
 class ApiExceptionResponder
@@ -30,6 +31,10 @@ class ApiExceptionResponder
 
         if ($e instanceof RegistrationException || $e instanceof PinException) {
             return ApiResponseDTO::error($e->getMessage(), $e->statusCode)->toResponse();
+        }
+
+        if ($e instanceof InvalidArgumentException) {
+            return ApiResponseDTO::error($e->getMessage(), 422)->toResponse();
         }
 
         if ($e instanceof DojahException) {

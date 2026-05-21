@@ -4,25 +4,29 @@ namespace App\Services\Kyc;
 
 use App\Enums\KycLevel;
 use App\Enums\KycStatus;
-use App\Exceptions\DojahException;
 use App\Exceptions\RegistrationException;
+use App\Exceptions\SwwipeException;
 use App\Models\KycVerification;
 use App\Models\User;
-use App\Services\Dojah\DojahClient;
+use App\Services\Swwipe\SwwipeClient;
 use Illuminate\Support\Facades\DB;
 
 class IdentityVerificationService
 {
-    public function __construct(private DojahClient $dojahClient) {}
+    public function __construct(private SwwipeClient $swwipeClient) {}
 
     /**
      * @return array<string, mixed>
      */
-    public function validateBvn(User $user, string $bvn): array
+    public function validateBvn(User $user, string $bvn, string $firstname, string $lastname): array
     {
         $this->assertIdentifierAvailable('bvn', $bvn, $user);
 
-        $entity = $this->dojahClient->lookupBvn($bvn);
+        try {
+            $entity = $this->swwipeClient->validateBvn($bvn, $firstname, $lastname);
+        } catch (SwwipeException $e) {
+            throw new RegistrationException($e->getMessage(), $e->statusCode);
+        }
 
         return $this->persistIdentityCheck($user, 'bvn', $bvn, $entity);
     }
@@ -34,7 +38,11 @@ class IdentityVerificationService
     {
         $this->assertIdentifierAvailable('nin', $nin, $user);
 
-        $entity = $this->dojahClient->lookupNin($nin);
+        try {
+            $entity = $this->swwipeClient->lookupNin($nin);
+        } catch (SwwipeException $e) {
+            throw new RegistrationException($e->getMessage(), $e->statusCode);
+        }
 
         return $this->persistIdentityCheck($user, 'nin', $nin, $entity);
     }
@@ -61,7 +69,14 @@ class IdentityVerificationService
     private function persistIdentityCheck(User $user, string $column, string $value, array $entity): array
     {
         return DB::transaction(function () use ($user, $column, $value, $entity) {
-            $user->update([$column => $value]);
+            $updates = [$column => $value];
+            if (! empty($entity['firstname']) && empty($user->firstname)) {
+                $updates['firstname'] = $entity['firstname'];
+            }
+            if (! empty($entity['lastname']) && empty($user->lastname)) {
+                $updates['lastname'] = $entity['lastname'];
+            }
+            $user->update($updates);
 
             $kyc = KycVerification::query()->updateOrCreate(
                 [
@@ -72,7 +87,7 @@ class IdentityVerificationService
                     'status' => KycStatus::Submitted,
                     'payload' => [
                         $column => $value,
-                        'provider' => 'dojah',
+                        'provider' => 'swwipe',
                         'verified_at' => now()->toIso8601String(),
                         'entity' => $entity,
                     ],
@@ -81,10 +96,17 @@ class IdentityVerificationService
                 ]
             );
 
+            $resolvedName = trim(implode(' ', array_filter([
+                $entity['firstname'] ?? $user->firstname,
+                $entity['middlename'] ?? null,
+                $entity['lastname'] ?? $user->lastname,
+            ])));
+
             return [
                 'identifier_type' => $column,
                 'identifier' => $value,
                 'entity' => $entity,
+                'resolved_name' => $resolvedName !== '' ? strtoupper($resolvedName) : null,
                 'kyc' => $kyc,
             ];
         });

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Gender;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Enums\UserType;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,8 +26,13 @@ class User extends Authenticatable implements JWTSubject
         'dob',
         'phone',
         'email',
+        'user_type',
+        'backoffice_role_id',
+        'job_title',
+        'hub',
         'role',
         'status',
+        'account_tier',
         'bvn',
         'nin',
         'pin',
@@ -44,6 +50,7 @@ class User extends Authenticatable implements JWTSubject
         return [
             'gender' => Gender::class,
             'dob' => 'date',
+            'user_type' => UserType::class,
             'role' => UserRole::class,
             'status' => UserStatus::class,
             'email_verified_at' => 'datetime',
@@ -78,6 +85,17 @@ class User extends Authenticatable implements JWTSubject
     public function kycVerifications(): HasMany
     {
         return $this->hasMany(KycVerification::class);
+    }
+
+    public function backofficeRole(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(BackofficeRole::class, 'backoffice_role_id');
+    }
+
+    public function isBackofficeStaff(): bool
+    {
+        return $this->user_type === UserType::Staff
+            || $this->role === UserRole::Admin;
     }
 
     public function getFullNameAttribute(): string

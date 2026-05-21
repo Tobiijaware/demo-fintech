@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'backoffice.permission' => \App\Http\Middleware\EnsureBackofficePermission::class,
+        ]);
+
         $middleware->redirectGuestsTo(function ($request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return null;
