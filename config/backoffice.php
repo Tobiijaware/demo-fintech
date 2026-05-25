@@ -45,7 +45,7 @@ return [
             'sanctions_screening' => 'read',
         ],
         'agent_manager' => [
-            'kyc_applications' => 'read',
+            'kyc_applications' => 'write',
             'agent_records' => 'write',
             'transactions' => 'read',
             'float_positions' => 'read',
