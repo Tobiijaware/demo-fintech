@@ -6,6 +6,7 @@ use App\Enums\OnboardingDocumentType;
 use App\Http\Controllers\Api\ApiController;
 use App\Models\OnboardingApplication;
 use App\Models\OnboardingDocument;
+use App\Services\Onboarding\OnboardingDocumentStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -14,6 +15,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class OnboardingDocumentController extends ApiController
 {
+    public function __construct(private OnboardingDocumentStorage $storage) {}
+
     public function index(OnboardingApplication $onboardingApplication): JsonResponse
     {
         $docs = $onboardingApplication->documents()
@@ -48,16 +51,34 @@ class OnboardingDocumentController extends ApiController
             return $this->error('File exceeds maximum upload size.', 422);
         }
 
+        $documentType = $request->input('document_type');
+        $existing = OnboardingDocument::query()
+            ->where('onboarding_application_id', $onboardingApplication->id)
+            ->where('document_type', $documentType)
+            ->first();
+
+        if ($existing?->storage_path) {
+            $this->storage->delete($existing->storage_path);
+        }
+
+        $storagePath = $this->storage->store(
+            $onboardingApplication->id,
+            $documentType,
+            $blob,
+            $mime,
+            $file->getClientOriginalName(),
+        );
+
         $doc = OnboardingDocument::query()->updateOrCreate(
             [
                 'onboarding_application_id' => $onboardingApplication->id,
-                'document_type' => $request->input('document_type'),
+                'document_type' => $documentType,
             ],
             [
                 'original_filename' => $file->getClientOriginalName(),
                 'mime_type' => $mime,
                 'file_size' => strlen($blob),
-                'file_blob' => $blob,
+                'storage_path' => $storagePath,
                 'uploaded_by' => auth('api')->id(),
             ],
         );
@@ -67,9 +88,15 @@ class OnboardingDocumentController extends ApiController
 
     public function show(OnboardingDocument $onboardingDocument): Response
     {
-        return response($onboardingDocument->file_blob, 200, [
+        $contents = $this->storage->get($onboardingDocument->storage_path);
+
+        if ($contents === null) {
+            return response('Document file not found.', 404);
+        }
+
+        return response($contents, 200, [
             'Content-Type' => $onboardingDocument->mime_type,
-            'Content-Length' => (string) $onboardingDocument->file_size,
+            'Content-Length' => (string) strlen($contents),
             'Content-Disposition' => 'inline; filename="'.addslashes($onboardingDocument->original_filename).'"',
             'Cache-Control' => 'private, max-age=3600',
         ]);
@@ -77,6 +104,7 @@ class OnboardingDocumentController extends ApiController
 
     public function destroy(OnboardingDocument $onboardingDocument): JsonResponse
     {
+        $this->storage->delete($onboardingDocument->storage_path);
         $onboardingDocument->delete();
 
         return $this->success(null, 'Document removed.');

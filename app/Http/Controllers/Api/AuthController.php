@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\SetupPinRequest;
 use App\Models\User;
 use App\Services\Auth\PinService;
+use App\Services\Governance\SessionService;
 use App\Services\Kyc\CustomerKycService;
 use Illuminate\Http\JsonResponse;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
@@ -19,6 +20,7 @@ class AuthController extends ApiController
     public function __construct(
         private PinService $pinService,
         private CustomerKycService $customerKycService,
+        private SessionService $sessionService,
     ) {}
 
     public function login(LoginRequest $request): JsonResponse
@@ -38,6 +40,15 @@ class AuthController extends ApiController
             }
         }
 
+        if ($user->isBackofficeStaff()) {
+            $this->sessionService->registerSession(
+                $user,
+                $token,
+                $request->ip(),
+                $request->userAgent(),
+            );
+        }
+
         return $this->success($this->tokenPayload($token, $user), 'Login successful.');
     }
 
@@ -45,6 +56,12 @@ class AuthController extends ApiController
     {
         /** @var User $user */
         $user = auth('api')->user()->load(['wallet', 'kycVerifications', 'backofficeRole']);
+
+        if ($token = JWTAuth::getToken()?->get()) {
+            if ($user->isBackofficeStaff()) {
+                $this->sessionService->touchSession($token);
+            }
+        }
         $user->append('pin_set_up');
 
         $payload = $user->toArray();
@@ -71,16 +88,36 @@ class AuthController extends ApiController
 
     public function refresh(): JsonResponse
     {
+        $oldToken = JWTAuth::getToken()?->get();
         $token = auth('api')->refresh();
+        /** @var User $user */
+        $user = auth('api')->user();
+
+        if ($oldToken) {
+            $this->sessionService->revokeByToken($oldToken);
+        }
+
+        if ($user->isBackofficeStaff()) {
+            $this->sessionService->registerSession(
+                $user,
+                $token,
+                request()->ip(),
+                request()->userAgent(),
+            );
+        }
 
         return $this->success(
-            $this->tokenPayload($token, auth('api')->user()),
+            $this->tokenPayload($token, $user),
             'Token refreshed.',
         );
     }
 
     public function logout(): JsonResponse
     {
+        if ($token = JWTAuth::getToken()?->get()) {
+            $this->sessionService->revokeByToken($token);
+        }
+
         auth('api')->logout();
 
         return $this->success(null, 'Successfully logged out.');

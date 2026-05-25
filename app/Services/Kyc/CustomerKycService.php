@@ -15,6 +15,7 @@ use App\Models\OnboardingApplication;
 use App\Models\OnboardingDocument;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingApplicationService;
+use App\Services\Onboarding\OnboardingDocumentStorage;
 use Illuminate\Http\UploadedFile;
 use InvalidArgumentException;
 
@@ -22,6 +23,7 @@ class CustomerKycService
 {
     public function __construct(
         private OnboardingApplicationService $onboardingService,
+        private OnboardingDocumentStorage $documentStorage,
     ) {}
 
     /**
@@ -104,6 +106,23 @@ class CustomerKycService
             throw new RegistrationException('File exceeds maximum upload size.', 422);
         }
 
+        $existing = OnboardingDocument::query()
+            ->where('onboarding_application_id', $application->id)
+            ->where('document_type', $type)
+            ->first();
+
+        if ($existing?->storage_path) {
+            $this->documentStorage->delete($existing->storage_path);
+        }
+
+        $storagePath = $this->documentStorage->store(
+            $application->id,
+            $type->value,
+            $blob,
+            $mime,
+            $file->getClientOriginalName(),
+        );
+
         $doc = OnboardingDocument::query()->updateOrCreate(
             [
                 'onboarding_application_id' => $application->id,
@@ -113,7 +132,7 @@ class CustomerKycService
                 'original_filename' => $file->getClientOriginalName(),
                 'mime_type' => $mime,
                 'file_size' => strlen($blob),
-                'file_blob' => $blob,
+                'storage_path' => $storagePath,
                 'uploaded_by' => $user->id,
             ],
         );

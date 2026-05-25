@@ -14,7 +14,7 @@ class OnboardingDocument extends Model
         'original_filename',
         'mime_type',
         'file_size',
-        'file_blob',
+        'storage_path',
         'uploaded_by',
     ];
 
@@ -22,7 +22,6 @@ class OnboardingDocument extends Model
     {
         return [
             'document_type' => OnboardingDocumentType::class,
-            'file_blob' => 'string',
         ];
     }
 

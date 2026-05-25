@@ -10,6 +10,7 @@ use App\Enums\VerificationCheckStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class OnboardingApplication extends Model
 {
@@ -80,5 +81,10 @@ class OnboardingApplication extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(OnboardingDocument::class);
+    }
+
+    public function agent(): HasOne
+    {
+        return $this->hasOne(Agent::class);
     }
 }

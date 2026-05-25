@@ -15,6 +15,7 @@ class Transaction extends Model
         'session_id',
         'user_id',
         'wallet_id',
+        'agent_id',
         'type',
         'direction',
         'amount',
@@ -49,6 +50,11 @@ class Transaction extends Model
     public function wallet(): BelongsTo
     {
         return $this->belongsTo(Wallet::class);
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
     }
 
     public function linkedTransaction(): BelongsTo

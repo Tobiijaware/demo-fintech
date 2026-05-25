@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'backoffice.permission' => \App\Http\Middleware\EnsureBackofficePermission::class,
+            'backoffice.permission.any' => \App\Http\Middleware\EnsureAnyBackofficePermission::class,
         ]);
 
         $middleware->redirectGuestsTo(function ($request) {

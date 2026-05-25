@@ -10,8 +10,21 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             BackofficeRbacSeeder::class,
+            MakerCheckerPolicySeeder::class,
             DemoWalletSeeder::class,
             OnboardingApplicationsSeeder::class,
+            AgentsSeeder::class,
+            AgentCommissionsSeeder::class,
+            TreasurySeeder::class,
+            SupportSeeder::class,
+            AuditLogSeeder::class,
+            OperationsSeeder::class,
+            SettlementSeeder::class,
+            ComplianceSeeder::class,
+            AmlSeeder::class,
+            SystemSettingsSeeder::class,
+            ProvisioningRequestSeeder::class,
+            StaffSessionSeeder::class,
         ]);
     }
 }

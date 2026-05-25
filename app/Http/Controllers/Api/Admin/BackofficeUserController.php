@@ -7,11 +7,13 @@ use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Admin\StoreBackofficeUserRequest;
 use App\Http\Requests\Admin\UpdateBackofficeUserRequest;
 use App\Models\User;
+use App\Services\Audit\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 
 class BackofficeUserController extends ApiController
 {
+    public function __construct(private AuditLogService $auditLog) {}
     public function index(): JsonResponse
     {
         $users = User::query()
@@ -43,7 +45,18 @@ class BackofficeUserController extends ApiController
 
         $user->load('backofficeRole');
 
-        return $this->success($this->formatUser($user), 'User created.', 201);
+        $formatted = $this->formatUser($user);
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'user.created',
+            'User',
+            (string) $user->id,
+            "Created back-office user {$user->full_name} ({$user->email})",
+            ['after' => $formatted],
+        );
+
+        return $this->success($formatted, 'User created.', 201);
     }
 
     public function update(UpdateBackofficeUserRequest $request, User $user): JsonResponse
@@ -51,6 +64,8 @@ class BackofficeUserController extends ApiController
         if ($user->user_type !== UserType::Staff) {
             return $this->error('Not a back-office user.', 422);
         }
+
+        $before = $this->formatUser($user->load('backofficeRole'));
 
         $data = $request->safe()->only([
             'firstname', 'lastname', 'email', 'backoffice_role_id', 'job_title', 'hub', 'status',
@@ -63,7 +78,18 @@ class BackofficeUserController extends ApiController
         $user->update($data);
         $user->load('backofficeRole');
 
-        return $this->success($this->formatUser($user), 'User updated.');
+        $after = $this->formatUser($user);
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'user.updated',
+            'User',
+            (string) $user->id,
+            "Updated back-office user {$user->full_name} ({$user->email})",
+            ['before' => $before, 'after' => $after],
+        );
+
+        return $this->success($after, 'User updated.');
     }
 
     public function destroy(User $user): JsonResponse
@@ -71,6 +97,17 @@ class BackofficeUserController extends ApiController
         if ($user->user_type !== UserType::Staff) {
             return $this->error('Not a back-office user.', 422);
         }
+
+        $before = $this->formatUser($user->load('backofficeRole'));
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'user.deleted',
+            'User',
+            (string) $user->id,
+            "Removed back-office user {$user->full_name} ({$user->email})",
+            ['before' => $before],
+        );
 
         $user->delete();
 

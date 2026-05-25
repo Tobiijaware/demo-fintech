@@ -9,9 +9,11 @@ use App\Enums\WalletStatus;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Audit\AuditLogService;
 use App\Services\Auth\PinService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -25,6 +27,7 @@ class TransactionService
     public function __construct(
         private WalletService $walletService,
         private PinService $pinService,
+        private AuditLogService $auditLog,
     ) {}
 
     /**
@@ -201,6 +204,49 @@ class TransactionService
 
     public function adminList(?string $search = null, ?string $status = null, int $perPage = 40): LengthAwarePaginator
     {
+        return $this->adminQuery($search, $status)
+            ->paginate($perPage);
+    }
+
+    public function adminFind(string $reference): Transaction
+    {
+        return Transaction::query()
+            ->with([
+                'user:id,firstname,lastname,email,phone',
+                'wallet:id,account_number,balance,currency,status',
+                'agent:id,code,business_name,proprietor_name,location,status',
+                'linkedTransaction',
+            ])
+            ->where('reference', $reference)
+            ->firstOrFail();
+    }
+
+    /**
+     * @return Collection<int, Transaction>
+     */
+    public function linkedTransactionsFor(Transaction $transaction): Collection
+    {
+        return Transaction::query()
+            ->with(['user:id,firstname,lastname,email', 'wallet:id,account_number'])
+            ->where('id', '!=', $transaction->id)
+            ->where(function (Builder $q) use ($transaction) {
+                $q->where('linked_transaction_id', $transaction->id)
+                    ->orWhere('id', $transaction->linked_transaction_id)
+                    ->orWhere(function (Builder $inner) use ($transaction) {
+                        if ($transaction->session_id) {
+                            $inner->where('session_id', $transaction->session_id);
+                        }
+                    });
+            })
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    /**
+     * @return Builder<Transaction>
+     */
+    public function adminQuery(?string $search = null, ?string $status = null): Builder
+    {
         $query = Transaction::query()
             ->with(['user:id,firstname,lastname,email,phone', 'wallet:id,account_number'])
             ->orderByDesc('created_at');
@@ -220,7 +266,158 @@ class TransactionService
             $query->where('status', $status);
         }
 
-        return $query->paginate($perPage);
+        return $query;
+    }
+
+    public function retryFailed(Transaction $transaction, User $actor, ?string $note = null): Transaction
+    {
+        if ($transaction->status !== TransactionStatus::Failed) {
+            throw new InvalidArgumentException('Only failed transactions can be retried.');
+        }
+
+        $meta = $transaction->meta ?? [];
+        $meta['retry'] = [
+            'retried_at' => now()->toIso8601String(),
+            'retried_by' => $actor->email,
+            'previous_status' => TransactionStatus::Failed->value,
+            'note' => $note,
+        ];
+
+        $transaction->update([
+            'status' => TransactionStatus::Pending,
+            'meta' => $meta,
+        ]);
+
+        $meta['retry']['completed_at'] = now()->toIso8601String();
+        $transaction->update([
+            'status' => TransactionStatus::Success,
+            'meta' => $meta,
+        ]);
+
+        $this->auditLog->record(
+            $actor,
+            'transaction.retried',
+            'Transaction',
+            $transaction->reference,
+            "Retried failed transaction {$transaction->reference}",
+            [
+                'reference' => $transaction->reference,
+                'note' => $note,
+            ],
+        );
+
+        return $transaction->fresh([
+            'user:id,firstname,lastname,email,phone',
+            'wallet:id,account_number',
+            'agent:id,code,business_name',
+        ]);
+    }
+
+    public function resolve(
+        Transaction $transaction,
+        User $actor,
+        TransactionStatus $status,
+        ?string $notes = null,
+    ): Transaction {
+        if (! in_array($transaction->status, [TransactionStatus::Failed, TransactionStatus::Pending], true)) {
+            throw new InvalidArgumentException('Only failed or pending transactions can be resolved.');
+        }
+
+        if (! in_array($status, [TransactionStatus::Success, TransactionStatus::Failed], true)) {
+            throw new InvalidArgumentException('Resolution status must be success or failed.');
+        }
+
+        $meta = $transaction->meta ?? [];
+        $meta['resolution'] = [
+            'resolved_at' => now()->toIso8601String(),
+            'resolved_by' => $actor->email,
+            'previous_status' => $transaction->status->value,
+            'notes' => $notes,
+        ];
+
+        $transaction->update([
+            'status' => $status,
+            'meta' => $meta,
+        ]);
+
+        $this->auditLog->record(
+            $actor,
+            'transaction.resolved',
+            'Transaction',
+            $transaction->reference,
+            "Resolved transaction {$transaction->reference} as {$status->value}",
+            [
+                'reference' => $transaction->reference,
+                'status' => $status->value,
+                'notes' => $notes,
+            ],
+        );
+
+        return $transaction->fresh([
+            'user:id,firstname,lastname,email,phone',
+            'wallet:id,account_number',
+            'agent:id,code,business_name',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function formatForAdmin(Transaction $tx, bool $includeLinked = false): array
+    {
+        $payload = [
+            'id' => $tx->reference,
+            'reference' => $tx->reference,
+            'session_id' => $tx->session_id,
+            'type' => $tx->type->value,
+            'direction' => $tx->direction->value,
+            'amount' => (float) $tx->amount,
+            'fee' => (float) $tx->fee,
+            'currency' => $tx->currency,
+            'status' => $tx->status->value,
+            'counterparty_name' => $tx->counterparty_name,
+            'counterparty_account' => $tx->counterparty_account,
+            'counterparty_bank' => $tx->counterparty_bank,
+            'narrative' => $tx->narrative,
+            'meta' => $tx->meta,
+            'occurred_at' => $tx->created_at?->toIso8601String(),
+            'created_at' => $tx->created_at?->toIso8601String(),
+            'updated_at' => $tx->updated_at?->toIso8601String(),
+            'user' => $tx->user ? [
+                'id' => $tx->user->id,
+                'name' => trim("{$tx->user->firstname} {$tx->user->lastname}"),
+                'email' => $tx->user->email,
+                'phone' => $tx->user->phone,
+            ] : null,
+            'wallet' => $tx->wallet ? [
+                'id' => $tx->wallet->id,
+                'account_number' => $tx->wallet->account_number,
+                'balance' => isset($tx->wallet->balance) ? (float) $tx->wallet->balance : null,
+                'currency' => $tx->wallet->currency ?? null,
+                'status' => $tx->wallet->status instanceof \BackedEnum
+                    ? $tx->wallet->status->value
+                    : $tx->wallet->status,
+            ] : null,
+            'agent' => $tx->agent_id && $tx->relationLoaded('agent') && $tx->agent ? [
+                'id' => $tx->agent->id,
+                'code' => $tx->agent->code,
+                'business_name' => $tx->agent->business_name,
+                'proprietor_name' => $tx->agent->proprietor_name,
+                'location' => $tx->agent->location,
+                'status' => $tx->agent->status->value,
+            ] : null,
+            'linked_transaction_id' => $tx->linked_transaction_id,
+        ];
+
+        if ($includeLinked) {
+            $linked = $this->linkedTransactionsFor($tx);
+            $payload['linked_transactions'] = $linked
+                ->map(fn (Transaction $linkedTx) => $this->formatForAdmin($linkedTx))
+                ->values()
+                ->all();
+        }
+
+        return $payload;
     }
 
     /**

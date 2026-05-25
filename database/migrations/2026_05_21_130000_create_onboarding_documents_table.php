@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('original_filename');
             $table->string('mime_type', 120);
             $table->unsignedInteger('file_size');
-            $table->binary('file_blob');
+            $table->string('storage_path', 500);
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 

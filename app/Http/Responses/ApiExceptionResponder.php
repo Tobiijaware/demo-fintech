@@ -8,6 +8,7 @@ use App\Exceptions\PinException;
 use App\Exceptions\RegistrationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException;
@@ -43,6 +44,13 @@ class ApiExceptionResponder
 
         if ($e instanceof ValidationException) {
             return ApiResponseDTO::error($e->getMessage(), 422, $e->errors())->toResponse();
+        }
+
+        if ($e instanceof QueryException) {
+            return ApiResponseDTO::error(
+                'Could not save data. Check uploaded file size and try again.',
+                500,
+            )->toResponse();
         }
 
         if ($e instanceof AuthenticationException) {

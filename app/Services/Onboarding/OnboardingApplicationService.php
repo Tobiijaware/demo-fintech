@@ -9,15 +9,26 @@ use App\Enums\OnboardingStatus;
 use App\Enums\UserStatus;
 use App\Enums\UserType;
 use App\Enums\VerificationCheckStatus;
+use App\Models\MakerCheckerPolicy;
 use App\Models\OnboardingApplication;
 use App\Models\OnboardingApplicationEvent;
 use App\Models\User;
+use App\Services\Agents\AgentProvisioningService;
+use App\Services\Audit\AuditLogService;
+use App\Services\Governance\MakerCheckerService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class OnboardingApplicationService
 {
+    public function __construct(
+        private MakerCheckerService $makerChecker,
+        private AuditLogService $auditLog,
+        private AgentProvisioningService $agentProvisioning,
+        private OnboardingIdentityService $onboardingIdentity,
+    ) {}
+
     public function generateReference(): string
     {
         return 'KYC-'.now()->format('Y').'-'.strtoupper(Str::random(5));
@@ -113,13 +124,17 @@ class OnboardingApplicationService
      */
     public function createInternal(array $data, User $maker): OnboardingApplication
     {
+        [$verificationStatus, $identityPayload] = $this->resolveIdentityVerification($data);
+
+        $payload = array_merge($data['payload'] ?? [], $identityPayload);
+
         $app = OnboardingApplication::query()->create([
             'reference' => $this->generateReference(),
             'applicant_type' => $data['applicant_type'],
             'tier' => $data['tier'],
             'status' => OnboardingStatus::Draft,
             'channel' => OnboardingChannel::Internal,
-            'verification_status' => $data['verification_status'] ?? VerificationCheckStatus::Pending,
+            'verification_status' => $data['verification_status'] ?? $verificationStatus,
             'business_name' => $data['business_name'] ?? null,
             'proprietor_name' => $data['proprietor_name'] ?? null,
             'location' => $data['location'] ?? null,
@@ -129,13 +144,27 @@ class OnboardingApplicationService
             'nin_masked' => isset($data['nin']) ? $this->maskId($data['nin']) : null,
             'phone' => $data['phone'] ?? null,
             'estimated_settlement' => $data['estimated_settlement'] ?? null,
-            'payload' => $data['payload'] ?? null,
+            'payload' => $payload ?: null,
             'linked_agents' => $data['linked_agents'] ?? null,
             'maker_id' => $maker->id,
             'sla_due_at' => now()->addDays(3),
         ]);
 
         $this->recordEvent($app, $maker, 'created', null, $app->status->value, 'Internal onboarding draft created');
+
+        $this->auditLog->record(
+            $maker,
+            'onboarding.created',
+            'OnboardingApplication',
+            (string) $app->id,
+            "Created internal onboarding draft {$app->reference}",
+            [
+                'reference' => $app->reference,
+                'applicant_type' => $app->applicant_type->value,
+                'tier' => $app->tier->value,
+                'channel' => $app->channel->value,
+            ],
+        );
 
         return $app->fresh(['maker']);
     }
@@ -170,7 +199,22 @@ class OnboardingApplicationService
             throw new InvalidArgumentException('Only draft applications can be submitted.');
         }
 
-        return $this->transition($app, $actor, OnboardingStatus::PendingReview, 'submitted', 'Submitted for checker review');
+        $updated = $this->transition($app, $actor, OnboardingStatus::PendingReview, 'submitted', 'Submitted for checker review');
+
+        $this->auditLog->record(
+            $actor,
+            'onboarding.submitted',
+            'OnboardingApplication',
+            (string) $updated->id,
+            "Submitted onboarding application {$updated->reference} for review",
+            [
+                'reference' => $updated->reference,
+                'from_status' => OnboardingStatus::Draft->value,
+                'to_status' => OnboardingStatus::PendingReview->value,
+            ],
+        );
+
+        return $updated;
     }
 
     public function approve(OnboardingApplication $app, User $checker): OnboardingApplication
@@ -190,6 +234,23 @@ class OnboardingApplicationService
             ]);
         }
 
+        if ($updated->applicant_type === ApplicantType::Agent) {
+            $this->agentProvisioning->provisionFromOnboarding($updated, $checker);
+        }
+
+        $this->auditLog->record(
+            $checker,
+            'onboarding.approved',
+            'OnboardingApplication',
+            (string) $updated->id,
+            "Approved onboarding application {$updated->reference}",
+            [
+                'reference' => $updated->reference,
+                'tier' => $updated->tier->value,
+                'user_id' => $updated->user_id,
+            ],
+        );
+
         return $updated;
     }
 
@@ -204,6 +265,18 @@ class OnboardingApplicationService
             User::query()->whereKey($updated->user_id)->update(['status' => UserStatus::Rejected]);
         }
 
+        $this->auditLog->record(
+            $checker,
+            'onboarding.rejected',
+            'OnboardingApplication',
+            (string) $updated->id,
+            "Rejected onboarding application {$updated->reference}",
+            [
+                'reference' => $updated->reference,
+                'reason' => $reason,
+            ],
+        );
+
         return $updated->fresh(['checker', 'maker', 'user']);
     }
 
@@ -214,6 +287,18 @@ class OnboardingApplicationService
         $updated = $this->transition($app, $checker, OnboardingStatus::Queried, 'queried', $notes);
         $updated->update(['query_notes' => $notes]);
 
+        $this->auditLog->record(
+            $checker,
+            'onboarding.queried',
+            'OnboardingApplication',
+            (string) $updated->id,
+            "Queried applicant on onboarding application {$updated->reference}",
+            [
+                'reference' => $updated->reference,
+                'notes' => $notes,
+            ],
+        );
+
         return $updated->fresh(['checker', 'maker', 'user']);
     }
 
@@ -221,7 +306,21 @@ class OnboardingApplicationService
     {
         $this->assertChecker($app, $checker);
 
-        return $this->transition($app, $checker, OnboardingStatus::OnHold, 'on_hold', $notes ?? 'Placed on hold');
+        $updated = $this->transition($app, $checker, OnboardingStatus::OnHold, 'on_hold', $notes ?? 'Placed on hold');
+
+        $this->auditLog->record(
+            $checker,
+            'onboarding.hold',
+            'OnboardingApplication',
+            (string) $updated->id,
+            "Placed onboarding application {$updated->reference} on hold",
+            [
+                'reference' => $updated->reference,
+                'notes' => $notes,
+            ],
+        );
+
+        return $updated;
     }
 
     protected function assertChecker(OnboardingApplication $app, User $checker): void
@@ -230,9 +329,32 @@ class OnboardingApplicationService
             throw new InvalidArgumentException('Only back-office staff can perform checker actions.');
         }
 
-        if ($app->maker_id && (int) $app->maker_id === (int) $checker->id) {
+        $maker = $app->maker;
+        if (! $maker) {
+            return;
+        }
+
+        if ((int) $app->maker_id === (int) $checker->id) {
             throw new InvalidArgumentException('Maker-checker rule: you cannot approve an application you initiated.');
         }
+
+        $policy = $this->resolveOnboardingPolicy($app);
+        if ($policy) {
+            $this->makerChecker->assertChecker($checker, $policy, $maker);
+        }
+    }
+
+    protected function resolveOnboardingPolicy(OnboardingApplication $app): ?MakerCheckerPolicy
+    {
+        if ($app->applicant_type === ApplicantType::Agent) {
+            return $this->makerChecker->findPolicyForResource('agent_records');
+        }
+
+        if ($app->tier === AccountTier::Tier3) {
+            return $this->makerChecker->findPolicyForResource('kyc_applications');
+        }
+
+        return null;
     }
 
     protected function transition(
@@ -272,6 +394,56 @@ class OnboardingApplicationService
             'to_status' => $to,
             'notes' => $notes,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{0: VerificationCheckStatus, 1: array<string, mixed>}
+     */
+    protected function resolveIdentityVerification(array $data): array
+    {
+        $payload = [];
+        $bvnOk = null;
+        $ninOk = null;
+
+        if (! empty($data['bvn'])) {
+            [$first, $last] = $this->splitName($data['proprietor_name'] ?? $data['business_name'] ?? 'Applicant');
+            $bvnResult = $this->onboardingIdentity->verifyBvn($data['bvn'], $first, $last);
+            $payload['bvn_verification'] = $bvnResult;
+            $bvnOk = $bvnResult['valid'] ?? false;
+        }
+
+        if (! empty($data['nin'])) {
+            $ninResult = $this->onboardingIdentity->verifyNin($data['nin']);
+            $payload['nin_verification'] = $ninResult;
+            $ninOk = $ninResult['valid'] ?? false;
+        }
+
+        if ($bvnOk === false) {
+            return [VerificationCheckStatus::BvnMismatch, $payload];
+        }
+
+        if ($ninOk === false) {
+            return [VerificationCheckStatus::NinMismatch, $payload];
+        }
+
+        if ($bvnOk === true || $ninOk === true) {
+            return [VerificationCheckStatus::Verified, $payload];
+        }
+
+        return [VerificationCheckStatus::Pending, $payload];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    protected function splitName(string $name): array
+    {
+        $parts = preg_split('/\s+/', trim($name)) ?: [];
+        $first = $parts[0] ?? 'Applicant';
+        $last = count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : $first;
+
+        return [$first, $last];
     }
 
     protected function maskId(string $value): string

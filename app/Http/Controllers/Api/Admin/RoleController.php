@@ -6,12 +6,20 @@ use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Admin\StoreRoleRequest;
 use App\Http\Requests\Admin\UpdateRoleRequest;
 use App\Models\BackofficeRole;
+use App\Services\Audit\AuditLogService;
 use App\Services\Backoffice\PermissionResolver;
+use App\Services\Governance\ApprovalRequestService;
+use App\Services\Governance\MakerCheckerService;
 use Illuminate\Http\JsonResponse;
 
 class RoleController extends ApiController
 {
-    public function __construct(private PermissionResolver $permissions) {}
+    public function __construct(
+        private PermissionResolver $permissions,
+        private AuditLogService $auditLog,
+        private MakerCheckerService $makerChecker,
+        private ApprovalRequestService $approvalRequests,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -43,18 +51,84 @@ class RoleController extends ApiController
 
         $this->permissions->syncRolePermissions($role, $request->validated('permissions', []));
 
-        return $this->success($this->formatRole($role->fresh('permissions'), true), 'Role created.', 201);
+        $formatted = $this->formatRole($role->fresh('permissions'), true);
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'role.created',
+            'BackofficeRole',
+            (string) $role->id,
+            "Created role {$role->name} ({$role->slug})",
+            ['after' => $formatted],
+        );
+
+        return $this->success($formatted, 'Role created.', 201);
     }
 
     public function update(UpdateRoleRequest $request, BackofficeRole $role): JsonResponse
     {
+        $before = $this->formatRole($role->load('permissions'), true);
+
         $role->update($request->safe()->only(['name', 'department', 'description']));
 
         if ($request->has('permissions')) {
+            $policy = $this->makerChecker->findPolicyForResource('user_management');
+
+            if ($policy) {
+                $permissions = $request->validated('permissions', []);
+                $approvalRequest = $this->approvalRequests->submit(
+                    auth('api')->user(),
+                    'user_management',
+                    'backoffice_role',
+                    (string) $role->id,
+                    [
+                        'action' => 'sync_role_permissions',
+                        'role_id' => $role->id,
+                        'permissions' => $permissions,
+                    ],
+                    "Permission update for role {$role->name}",
+                );
+
+                $after = $this->formatRole($role->fresh('permissions'), true);
+
+                $this->auditLog->record(
+                    auth('api')->user(),
+                    'role.permissions_submitted',
+                    'BackofficeRole',
+                    (string) $role->id,
+                    "Submitted permission update for role {$role->name} ({$role->slug})",
+                    [
+                        'before' => $before,
+                        'after' => $after,
+                        'approval_request_id' => $approvalRequest->id,
+                    ],
+                );
+
+                return $this->success([
+                    'role' => $after,
+                    'approval_request' => [
+                        'id' => $approvalRequest->id,
+                        'status' => $approvalRequest->status->value,
+                        'summary' => $approvalRequest->summary,
+                    ],
+                ], 'Role permission changes submitted for checker approval.');
+            }
+
             $this->permissions->syncRolePermissions($role, $request->validated('permissions', []));
         }
 
-        return $this->success($this->formatRole($role->fresh('permissions'), true), 'Role updated.');
+        $after = $this->formatRole($role->fresh('permissions'), true);
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'role.updated',
+            'BackofficeRole',
+            (string) $role->id,
+            "Updated role {$role->name} ({$role->slug})",
+            ['before' => $before, 'after' => $after],
+        );
+
+        return $this->success($after, 'Role updated.');
     }
 
     public function destroy(BackofficeRole $role): JsonResponse
@@ -66,6 +140,17 @@ class RoleController extends ApiController
         if ($role->users()->exists()) {
             return $this->error('Role is assigned to users. Reassign them first.', 422);
         }
+
+        $before = $this->formatRole($role->load('permissions'), true);
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'role.deleted',
+            'BackofficeRole',
+            (string) $role->id,
+            "Deleted role {$role->name} ({$role->slug})",
+            ['before' => $before],
+        );
 
         $role->delete();
 

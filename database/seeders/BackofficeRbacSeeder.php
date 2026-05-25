@@ -78,9 +78,9 @@ class BackofficeRbacSeeder extends Seeder
             ['email' => 'aml.analyst@iwallet.demo', 'slug' => 'aml_analyst', 'firstname' => 'Tolu', 'lastname' => 'Akinbode', 'job_title' => 'AML analyst', 'hub' => 'Lagos hub'],
             ['email' => 'compliance@iwallet.demo', 'slug' => 'compliance_officer', 'firstname' => 'Funmi', 'lastname' => 'Adekunle', 'job_title' => 'Chief compliance officer', 'hub' => null],
             ['email' => 'support@iwallet.demo', 'slug' => 'customer_support', 'firstname' => 'Bola', 'lastname' => 'Adesina', 'job_title' => 'Tier 1 support agent', 'hub' => 'Online'],
-            ['email' => 'finance@iwallet.demo', 'slug' => 'finance_treasury', 'firstname' => 'Ngozi', 'lastname' => 'Okeke', 'job_title' => 'Treasury manager', 'hub' => 'Lagos hub'],
-            ['email' => 'operations@iwallet.demo', 'slug' => 'operations_lead', 'firstname' => 'Yemi', 'lastname' => 'Olatunji', 'job_title' => 'Operations lead', 'hub' => 'Lagos hub'],
-            ['email' => 'settlement@iwallet.demo', 'slug' => 'settlement_officer', 'firstname' => 'Ada', 'lastname' => 'Okonkwo', 'job_title' => 'Settlement officer', 'hub' => 'Lagos hub'],
+            ['email' => 'finance@iwallet.demo', 'slug' => 'finance_treasury', 'firstname' => 'Amaka', 'lastname' => 'Iheanacho', 'job_title' => 'Treasury manager', 'hub' => 'Lagos hub'],
+            ['email' => 'operations@iwallet.demo', 'slug' => 'operations_lead', 'firstname' => 'Sade', 'lastname' => 'Bankole', 'job_title' => 'Operations lead', 'hub' => 'Lagos hub'],
+            ['email' => 'settlement@iwallet.demo', 'slug' => 'settlement_officer', 'firstname' => 'Ngozi', 'lastname' => 'Okeke', 'job_title' => 'Settlement officer', 'hub' => 'Lagos hub'],
         ];
 
         foreach ($demoStaff as $staff) {

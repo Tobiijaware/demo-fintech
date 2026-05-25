@@ -145,6 +145,7 @@ class OnboardingApplicationController extends ApiController
                 ])
                 : [],
             'required_documents' => $this->requiredDocumentsFor($app),
+            'payload' => $app->payload,
         ];
 
         if ($detailed && $app->relationLoaded('events')) {
