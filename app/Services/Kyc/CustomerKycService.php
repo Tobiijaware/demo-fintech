@@ -411,6 +411,16 @@ class CustomerKycService
         if ($application->status === OnboardingStatus::Approved) {
             return 'verified';
         }
+
+        $hasApprovedCustomerApplication = OnboardingApplication::query()
+            ->where('user_id', $user->id)
+            ->where('applicant_type', ApplicantType::Customer)
+            ->where('status', OnboardingStatus::Approved)
+            ->exists();
+
+        if ($hasApprovedCustomerApplication && $user->status === UserStatus::Approved) {
+            return 'verified';
+        }
         if (in_array($application->status, [OnboardingStatus::PendingReview, OnboardingStatus::Submitted, OnboardingStatus::OnHold], true)) {
             return 'pending';
         }

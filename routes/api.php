@@ -177,6 +177,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/', [AgentController::class, 'index']);
             Route::get('{agent}', [AgentController::class, 'show']);
             Route::put('{agent}', [AgentController::class, 'update'])->middleware('backoffice.permission:agent_records,write');
+            Route::post('{agent}/float-top-up', [AgentController::class, 'topUpFloat'])->middleware('backoffice.permission:agent_records,write');
         });
 
         Route::prefix('admin/audit-logs')->middleware('backoffice.permission:audit_logs,read')->group(function () {

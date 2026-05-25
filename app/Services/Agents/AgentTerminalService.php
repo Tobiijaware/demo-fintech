@@ -78,6 +78,7 @@ class AgentTerminalService
         $before = [
             'status' => $terminal->status->value,
             'model' => $terminal->model,
+            'agent_id' => $terminal->agent_id,
         ];
 
         $terminal->update($data);
@@ -86,10 +87,14 @@ class AgentTerminalService
 
         $this->auditLog->record(
             $actor,
-            'agent.terminal.updated',
+            isset($data['agent_id']) && (int) $data['agent_id'] !== (int) $before['agent_id']
+                ? 'agent.terminal.reassigned'
+                : 'agent.terminal.updated',
             'AgentTerminal',
             (string) $updated->id,
-            "Updated terminal {$updated->serial_number}",
+            isset($data['agent_id']) && (int) $data['agent_id'] !== (int) $before['agent_id']
+                ? "Reassigned terminal {$updated->serial_number}"
+                : "Updated terminal {$updated->serial_number}",
             [
                 'agent_id' => $updated->agent_id,
                 'serial_number' => $updated->serial_number,
@@ -97,6 +102,7 @@ class AgentTerminalService
                 'after' => [
                     'status' => $updated->status->value,
                     'model' => $updated->model,
+                    'agent_id' => $updated->agent_id,
                 ],
             ],
         );

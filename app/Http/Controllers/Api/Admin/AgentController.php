@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\ApiController;
+use App\Http\Requests\Admin\TopUpAgentFloatRequest;
 use App\Http\Requests\Admin\UpdateAgentRequest;
 use App\Models\Agent;
 use App\Services\Agents\AgentService;
@@ -41,6 +42,13 @@ class AgentController extends ApiController
         $updated = $this->service->update($agent, $request->validated(), auth('api')->user());
 
         return $this->success($this->format($updated, true), 'Agent updated.');
+    }
+
+    public function topUpFloat(TopUpAgentFloatRequest $request, Agent $agent): JsonResponse
+    {
+        $updated = $this->service->topUpFloat($agent, $request->validated(), auth('api')->user());
+
+        return $this->success($this->format($updated, true), 'Agent float topped up.');
     }
 
     /**

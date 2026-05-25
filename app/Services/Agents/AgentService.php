@@ -74,6 +74,36 @@ class AgentService
     /**
      * @param  array<string, mixed>  $data
      */
+    public function topUpFloat(Agent $agent, array $data, User $actor): Agent
+    {
+        $amount = (float) $data['amount'];
+        $before = (float) $agent->float_balance;
+
+        $agent->increment('float_balance', $amount);
+
+        $updated = $agent->fresh(['onboardingApplication', 'user'])->loadCount('terminals');
+
+        $this->auditLog->record(
+            $actor,
+            'agent.float_top_up',
+            'Agent',
+            (string) $updated->id,
+            "Topped up float for agent {$updated->code}",
+            [
+                'code' => $updated->code,
+                'amount' => $amount,
+                'note' => $data['note'] ?? null,
+                'before' => $before,
+                'after' => (float) $updated->float_balance,
+            ],
+        );
+
+        return $updated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public function update(Agent $agent, array $data, User $actor): Agent
     {
         $before = [

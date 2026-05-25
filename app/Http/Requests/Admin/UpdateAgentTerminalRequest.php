@@ -21,6 +21,7 @@ class UpdateAgentTerminalRequest extends FormRequest
         return [
             'status' => ['sometimes', new Enum(AgentTerminalStatus::class)],
             'model' => ['nullable', 'string', 'max:64'],
+            'agent_id' => ['sometimes', 'integer', 'exists:agents,id'],
         ];
     }
 }
