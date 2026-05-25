@@ -52,7 +52,13 @@ class OnboardingApplicationController extends ApiController
 
     public function show(OnboardingApplication $onboardingApplication): JsonResponse
     {
-        return $this->success($this->format($this->service->find($onboardingApplication->id), true));
+        $app = $this->service->find($onboardingApplication->id);
+        if ($app->applicant_type->value === 'customer' && $app->user_id) {
+            $app = $this->customerKycService->syncApplicationFromUser($app->user, $app);
+            $app = $this->service->find($app->id);
+        }
+
+        return $this->success($this->format($app, true));
     }
 
     public function store(StoreOnboardingApplicationRequest $request): JsonResponse

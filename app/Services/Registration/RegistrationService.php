@@ -2,6 +2,7 @@
 
 namespace App\Services\Registration;
 
+use App\Enums\OnboardingStatus;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Exceptions\RegistrationException;
@@ -67,7 +68,10 @@ class RegistrationService
 
             $wallet = $this->walletService->createNgnWallet($user);
             $kyc = $this->kycService->initializeForUser($user);
-            $onboarding = $this->onboardingService->createFromMobileCustomer($user);
+            $onboarding = $this->onboardingService->createFromMobileCustomer($user, [
+                'status' => OnboardingStatus::Draft,
+                'submitted_at' => null,
+            ]);
 
             return compact('user', 'wallet', 'kyc', 'onboarding');
         });

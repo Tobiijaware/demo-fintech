@@ -18,6 +18,8 @@ class ValidateNinRequest extends FormRequest
     {
         return [
             'nin' => ['required', 'string', 'digits:11'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'date_of_birth' => ['sometimes', 'nullable', 'date'],
         ];
     }
 }

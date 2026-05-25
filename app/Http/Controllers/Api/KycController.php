@@ -48,7 +48,10 @@ class KycController extends ApiController
             $request->validated('bvn'),
             $request->validated('firstname'),
             $request->validated('lastname'),
+            $request->validated('date_of_birth'),
         );
+
+        $this->customerKycService->syncActiveCustomerApplication(auth('api')->user());
 
         return $this->success($result, 'BVN verified successfully.');
     }
@@ -58,7 +61,11 @@ class KycController extends ApiController
         $result = $this->identityVerificationService->validateNin(
             auth('api')->user(),
             $request->validated('nin'),
+            $request->validated('phone'),
+            $request->validated('date_of_birth'),
         );
+
+        $this->customerKycService->syncActiveCustomerApplication(auth('api')->user());
 
         return $this->success($result, 'NIN verified successfully.');
     }
@@ -70,6 +77,8 @@ class KycController extends ApiController
             $request->validated('document_type'),
             $request->file('file'),
         );
+
+        $this->customerKycService->syncActiveCustomerApplication(auth('api')->user());
 
         return $this->success([
             'id' => $doc->id,

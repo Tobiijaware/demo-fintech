@@ -54,6 +54,13 @@ class OnboardingApplicationService
                 $query->where('status', OnboardingStatus::ReVerification);
             } else {
                 $query->whereIn('status', OnboardingStatus::queueStatuses());
+                $query->where(function ($sub) {
+                    $sub->where('applicant_type', '!=', ApplicantType::Customer)
+                        ->orWhere('tier', '!=', AccountTier::Tier1)
+                        ->orWhereNotNull('bvn_masked')
+                        ->orWhereNotNull('nin_masked')
+                        ->orHas('documents');
+                });
             }
         }
 

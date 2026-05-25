@@ -20,6 +20,7 @@ class ValidateBvnRequest extends FormRequest
             'bvn' => ['required', 'string', 'digits:11'],
             'firstname' => ['required', 'string', 'max:120'],
             'lastname' => ['required', 'string', 'max:120'],
+            'date_of_birth' => ['sometimes', 'nullable', 'date'],
         ];
     }
 }

@@ -18,7 +18,7 @@ class IdentityVerificationService
     /**
      * @return array<string, mixed>
      */
-    public function validateBvn(User $user, string $bvn, string $firstname, string $lastname): array
+    public function validateBvn(User $user, string $bvn, string $firstname, string $lastname, ?string $dateOfBirth = null): array
     {
         $this->assertIdentifierAvailable('bvn', $bvn, $user);
 
@@ -28,13 +28,13 @@ class IdentityVerificationService
             throw new RegistrationException($e->getMessage(), $e->statusCode);
         }
 
-        return $this->persistIdentityCheck($user, 'bvn', $bvn, $entity);
+        return $this->persistIdentityCheck($user, 'bvn', $bvn, $entity, null, $dateOfBirth);
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function validateNin(User $user, string $nin): array
+    public function validateNin(User $user, string $nin, ?string $phone = null, ?string $dateOfBirth = null): array
     {
         $this->assertIdentifierAvailable('nin', $nin, $user);
 
@@ -44,7 +44,7 @@ class IdentityVerificationService
             throw new RegistrationException($e->getMessage(), $e->statusCode);
         }
 
-        return $this->persistIdentityCheck($user, 'nin', $nin, $entity);
+        return $this->persistIdentityCheck($user, 'nin', $nin, $entity, $phone, $dateOfBirth);
     }
 
     private function assertIdentifierAvailable(string $column, string $value, User $user): void
@@ -66,15 +66,31 @@ class IdentityVerificationService
      * @param  array<string, mixed>  $entity
      * @return array<string, mixed>
      */
-    private function persistIdentityCheck(User $user, string $column, string $value, array $entity): array
-    {
-        return DB::transaction(function () use ($user, $column, $value, $entity) {
+    private function persistIdentityCheck(
+        User $user,
+        string $column,
+        string $value,
+        array $entity,
+        ?string $phone = null,
+        ?string $dateOfBirth = null,
+    ): array {
+        return DB::transaction(function () use ($user, $column, $value, $entity, $phone, $dateOfBirth) {
             $updates = [$column => $value];
             if (! empty($entity['firstname']) && empty($user->firstname)) {
                 $updates['firstname'] = $entity['firstname'];
             }
             if (! empty($entity['lastname']) && empty($user->lastname)) {
                 $updates['lastname'] = $entity['lastname'];
+            }
+            if ($phone) {
+                $updates['phone'] = preg_replace('/\D/', '', $phone) ?: $phone;
+            } elseif (! empty($entity['telephone']) && empty($user->phone)) {
+                $updates['phone'] = preg_replace('/\D/', '', (string) $entity['telephone']) ?: $entity['telephone'];
+            }
+            if ($dateOfBirth) {
+                $updates['dob'] = $dateOfBirth;
+            } elseif (! empty($entity['birthdate']) && empty($user->dob)) {
+                $updates['dob'] = $entity['birthdate'];
             }
             $user->update($updates);
 

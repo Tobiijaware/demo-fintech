@@ -10,6 +10,7 @@ use App\Enums\OnboardingChannel;
 use App\Enums\OnboardingDocumentType;
 use App\Enums\OnboardingStatus;
 use App\Enums\UserStatus;
+use App\Enums\VerificationCheckStatus;
 use App\Exceptions\RegistrationException;
 use App\Models\OnboardingApplication;
 use App\Models\OnboardingDocument;
@@ -146,7 +147,126 @@ class CustomerKycService
                 ]);
         }
 
+        $this->syncApplicationFromUser($user->fresh(), $application);
+
         return $doc;
+    }
+
+    public function syncActiveCustomerApplication(User $user): void
+    {
+        $targetTier = config('onboarding.default_customer_target_tier', 'tier_2');
+        $application = OnboardingApplication::query()
+            ->where('user_id', $user->id)
+            ->where('applicant_type', ApplicantType::Customer)
+            ->where('tier', $targetTier)
+            ->whereNotIn('status', [OnboardingStatus::Rejected])
+            ->latest()
+            ->first();
+
+        if ($application) {
+            $this->syncApplicationFromUser($user->fresh(), $application);
+        }
+    }
+
+    public function syncApplicationFromUser(User $user, OnboardingApplication $application): OnboardingApplication
+    {
+        if ($application->applicant_type !== ApplicantType::Customer) {
+            return $application;
+        }
+
+        $user->loadMissing('kycVerifications');
+        $identityKyc = $user->kycVerifications
+            ->firstWhere('level', KycLevel::IdentityVerification);
+
+        $kycPayload = $identityKyc?->payload ?? [];
+        $entity = is_array($kycPayload['entity'] ?? null) ? $kycPayload['entity'] : [];
+
+        $payload = $application->payload ?? [];
+        if ($user->bvn) {
+            $payload['bvn_verification'] = $this->buildVerificationSnapshot(
+                'bvn',
+                $user->bvn,
+                $kycPayload,
+                $entity,
+                $user,
+            );
+        }
+        if ($user->nin) {
+            $payload['nin_verification'] = $this->buildVerificationSnapshot(
+                'nin',
+                $user->nin,
+                $kycPayload,
+                $entity,
+                $user,
+            );
+        }
+
+        $resolvedName = trim(implode(' ', array_filter([
+            $entity['firstname'] ?? $user->firstname,
+            $entity['middlename'] ?? null,
+            $entity['lastname'] ?? $user->lastname,
+        ])));
+
+        $payload['identity_entity'] = $entity ?: null;
+        $payload['date_of_birth'] = $user->dob?->format('Y-m-d')
+            ?? ($entity['birthdate'] ?? null);
+        $payload['resolved_name'] = $resolvedName !== '' ? strtoupper($resolvedName) : null;
+        $payload['email'] = $entity['email'] ?? $user->email;
+
+        $hasIdentity = ! empty($user->bvn) || ! empty($user->nin);
+        $verificationStatus = $hasIdentity
+            ? VerificationCheckStatus::Verified
+            : VerificationCheckStatus::Pending;
+
+        $application->update([
+            'business_name' => $user->full_name ?: $application->business_name,
+            'proprietor_name' => $user->full_name ?: $application->proprietor_name,
+            'bvn_masked' => $user->bvn ? $this->maskId($user->bvn) : $application->bvn_masked,
+            'nin_masked' => $user->nin ? $this->maskId($user->nin) : $application->nin_masked,
+            'phone' => $user->phone ?? ($entity['telephone'] ?? $application->phone),
+            'location' => $application->location ?? ($entity['address'] ?? null),
+            'payload' => $payload,
+            'verification_status' => $verificationStatus,
+        ]);
+
+        return $application->fresh(['documents']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $kycPayload
+     * @param  array<string, mixed>  $entity
+     * @return array<string, mixed>
+     */
+    protected function buildVerificationSnapshot(
+        string $column,
+        string $value,
+        array $kycPayload,
+        array $entity,
+        User $user,
+    ): array {
+        $storedValue = $kycPayload[$column] ?? null;
+        $matches = $storedValue === null || $storedValue === $value;
+
+        $resolvedName = trim(implode(' ', array_filter([
+            $entity['firstname'] ?? $user->firstname,
+            $entity['middlename'] ?? null,
+            $entity['lastname'] ?? $user->lastname,
+        ])));
+
+        return [
+            'valid' => $matches,
+            'resolved_name' => $resolvedName !== '' ? strtoupper($resolvedName) : null,
+            'message' => $matches ? 'Verified via Swwipe' : 'Identity record mismatch',
+            'provider' => $kycPayload['provider'] ?? 'swwipe',
+            'verified_at' => $kycPayload['verified_at'] ?? null,
+        ];
+    }
+
+    protected function maskId(string $value): string
+    {
+        $digits = preg_replace('/\D/', '', $value) ?: $value;
+
+        return '****'.substr($digits, -4);
     }
 
     /**
@@ -161,6 +281,9 @@ class CustomerKycService
         if (! $progress['ready_to_submit']) {
             throw new RegistrationException('Complete all required identity checks and documents before submitting.', 422);
         }
+
+        $this->syncApplicationFromUser($user->fresh(), $application);
+        $application->refresh();
 
         if ($application->status === OnboardingStatus::Draft) {
             $application->update([
@@ -191,6 +314,8 @@ class CustomerKycService
         if ($existing) {
             return $existing;
         }
+
+        $this->dismissEmptyRegistrationStub($user);
 
         return $this->onboardingService->createFromMobileCustomer($user, [
             'tier' => $targetTier,
@@ -297,5 +422,22 @@ class CustomerKycService
         }
 
         return $user->status === UserStatus::Approved ? 'verified' : 'not_started';
+    }
+
+    protected function dismissEmptyRegistrationStub(User $user): void
+    {
+        OnboardingApplication::query()
+            ->where('user_id', $user->id)
+            ->where('applicant_type', ApplicantType::Customer)
+            ->where('tier', AccountTier::Tier1)
+            ->where('status', OnboardingStatus::PendingReview)
+            ->whereNull('bvn_masked')
+            ->whereNull('nin_masked')
+            ->whereDoesntHave('documents')
+            ->update([
+                'status' => OnboardingStatus::Rejected,
+                'rejection_reason' => 'Superseded by tier upgrade application.',
+                'reviewed_at' => now(),
+            ]);
     }
 }
