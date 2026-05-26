@@ -2,6 +2,7 @@
 
 namespace App\Services\Registration;
 
+use App\Enums\AccountTier;
 use App\Enums\KycLevel;
 use App\Enums\KycStatus;
 use App\Enums\OnboardingStatus;
@@ -100,7 +101,8 @@ class RegistrationService
                 'bvn' => $profile['bvn'],
                 'user_type' => UserType::Customer,
                 'role' => UserRole::Customer,
-                'status' => UserStatus::Pending,
+                'status' => UserStatus::Approved,
+                'account_tier' => AccountTier::Tier1->value,
                 'email_verified_at' => now(),
             ]);
 
@@ -121,8 +123,9 @@ class RegistrationService
                     ],
                 ]);
             $onboarding = $this->onboardingService->createFromMobileCustomer($user, [
-                'status' => OnboardingStatus::Draft,
-                'submitted_at' => null,
+                'tier' => AccountTier::Tier1,
+                'status' => OnboardingStatus::Approved,
+                'submitted_at' => now(),
             ]);
 
             $this->registrationProfileService->forget($email);

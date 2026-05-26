@@ -459,6 +459,12 @@ class CustomerKycService
         if ($hasApprovedCustomerApplication && $user->status === UserStatus::Approved) {
             return 'verified';
         }
+
+        // Mobile tier 1 signup (email + profile + BVN) counts as verified for tier 1.
+        if ($this->hasCompletedTier1Signup($user)) {
+            return 'verified';
+        }
+
         if (in_array($application->status, [OnboardingStatus::PendingReview, OnboardingStatus::Submitted, OnboardingStatus::OnHold], true)) {
             return 'pending';
         }
@@ -470,6 +476,21 @@ class CustomerKycService
         }
 
         return $user->status === UserStatus::Approved ? 'verified' : 'not_started';
+    }
+
+    protected function hasCompletedTier1Signup(User $user): bool
+    {
+        $tier = $user->account_tier ?? AccountTier::Tier1->value;
+
+        if ($tier !== AccountTier::Tier1->value || empty($user->bvn)) {
+            return false;
+        }
+
+        if (empty($user->firstname) || empty($user->lastname) || empty($user->phone)) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function dismissEmptyRegistrationStub(User $user): void
