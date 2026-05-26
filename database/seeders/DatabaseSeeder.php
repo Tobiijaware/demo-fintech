@@ -10,6 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             BackofficeRbacSeeder::class,
+            TierDefinitionSeeder::class,
             MakerCheckerPolicySeeder::class,
             DemoWalletSeeder::class,
             OnboardingApplicationsSeeder::class,

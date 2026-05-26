@@ -25,6 +25,7 @@ class CustomerKycService
     public function __construct(
         private OnboardingApplicationService $onboardingService,
         private OnboardingDocumentStorage $documentStorage,
+        private TierCriteriaService $tierCriteriaService,
     ) {}
 
     /**
@@ -32,13 +33,7 @@ class CustomerKycService
      */
     public function tierRequirements(string $applicantType, string $targetTier): array
     {
-        $req = config("onboarding.tier_requirements.{$applicantType}.{$targetTier}");
-
-        if (! $req) {
-            throw new InvalidArgumentException('Unknown tier requirements.');
-        }
-
-        return $this->formatRequirements($applicantType, $targetTier, $req);
+        return $this->tierCriteriaService->tierRequirements($applicantType, $targetTier);
     }
 
     /**
@@ -46,11 +41,7 @@ class CustomerKycService
      */
     public function allTierDefinitions(string $applicantType = 'customer'): array
     {
-        $tiers = config("onboarding.tier_requirements.{$applicantType}", []);
-
-        return collect($tiers)->map(function ($req, $tier) use ($applicantType) {
-            return $this->formatRequirements($applicantType, $tier, $req);
-        })->values()->all();
+        return $this->tierCriteriaService->allTierDefinitions($applicantType);
     }
 
     /**
@@ -64,14 +55,17 @@ class CustomerKycService
 
         $application = $this->ensureUpgradeApplication($user, AccountTier::from($targetTier));
         $requirements = $this->tierRequirements($applicantType, $targetTier);
-        $completed = $this->completedSteps($user, $application);
+        $completed = $this->tierCriteriaService->completedForUser($user, $application, $requirements);
 
-        $ready = $this->isReadyToSubmit($requirements, $completed);
+        $ready = $this->tierCriteriaService->isReadyToSubmit($requirements, $completed);
+        $obligations = $this->tierCriteriaService->outstandingObligations($user);
 
         return [
             'account_tier' => $currentTier,
             'target_tier' => $targetTier,
             'kyc_status' => $this->resolveKycStatus($user, $application),
+            'compliance_status' => $this->tierCriteriaService->resolveComplianceStatus($obligations),
+            'outstanding_obligations' => $obligations,
             'application' => [
                 'id' => $application->id,
                 'reference' => $application->reference,
@@ -86,6 +80,50 @@ class CustomerKycService
                 OnboardingStatus::Queried,
             ], true),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function saveField(User $user, string $key, string $value): array
+    {
+        $column = match ($key) {
+            'firstname' => 'firstname',
+            'lastname' => 'lastname',
+            'phone' => 'phone',
+            'date_of_birth', 'dob' => 'dob',
+            default => null,
+        };
+
+        if ($column === null) {
+            throw new RegistrationException('This field cannot be updated here.', 422);
+        }
+
+        $normalized = match ($column) {
+            'firstname', 'lastname' => trim($value),
+            'phone' => preg_replace('/\D/', '', $value) ?: $value,
+            'dob' => $value,
+            default => trim($value),
+        };
+
+        if ($column === 'firstname' || $column === 'lastname') {
+            if ($normalized === '') {
+                throw new RegistrationException('Value is required.', 422);
+            }
+        }
+
+        if ($column === 'phone' && strlen($normalized) < 10) {
+            throw new RegistrationException('Enter a valid phone number.', 422);
+        }
+
+        if ($column === 'dob' && ! strtotime($normalized)) {
+            throw new RegistrationException('Enter a valid date.', 422);
+        }
+
+        $user->update([$column => $normalized]);
+        $this->syncActiveCustomerApplication($user->fresh());
+
+        return $this->progress($user->fresh());
     }
 
     public function storeDocument(User $user, string $documentType, UploadedFile $file): OnboardingDocument

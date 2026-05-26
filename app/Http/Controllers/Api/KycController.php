@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Requests\Kyc\SaveKycFieldRequest;
 use App\Http\Requests\Kyc\StoreKycDocumentRequest;
 use App\Http\Requests\Kyc\ValidateBvnRequest;
 use App\Http\Requests\Kyc\ValidateNinRequest;
@@ -68,6 +69,17 @@ class KycController extends ApiController
         $this->customerKycService->syncActiveCustomerApplication(auth('api')->user());
 
         return $this->success($result, 'NIN verified successfully.');
+    }
+
+    public function saveField(SaveKycFieldRequest $request, string $key): JsonResponse
+    {
+        $progress = $this->customerKycService->saveField(
+            auth('api')->user(),
+            $key,
+            $request->validated('value'),
+        );
+
+        return $this->success($progress, 'Field saved.');
     }
 
     public function storeDocument(StoreKycDocumentRequest $request): JsonResponse

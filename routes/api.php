@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\MakerCheckerPolicyController;
 use App\Http\Controllers\Api\Admin\BackofficeUserController;
 use App\Http\Controllers\Api\Admin\OnboardingIdentityController;
 use App\Http\Controllers\Api\Admin\OnboardingApplicationController;
+use App\Http\Controllers\Api\Admin\TierDefinitionController;
 use App\Http\Controllers\Api\Admin\OnboardingDocumentController;
 use App\Http\Controllers\Api\Admin\OperationsController;
 use App\Http\Controllers\Api\Admin\OperationsIncidentController;
@@ -49,6 +50,9 @@ Route::prefix('v1')->group(function () {
             Route::post('email', [RegistrationController::class, 'sendCode']);
             Route::post('resend-code', [RegistrationController::class, 'resendCode']);
             Route::post('verify-email', [RegistrationController::class, 'verifyEmail']);
+            Route::get('criteria', [RegistrationController::class, 'criteria']);
+            Route::post('profile', [RegistrationController::class, 'saveProfile']);
+            Route::post('validate-bvn', [RegistrationController::class, 'validateBvn']);
             Route::post('complete', [RegistrationController::class, 'complete']);
         });
 
@@ -77,6 +81,7 @@ Route::prefix('v1')->group(function () {
             Route::get('progress', [KycController::class, 'progress']);
             Route::post('bvn/validate', [KycController::class, 'validateBvn']);
             Route::post('nin/validate', [KycController::class, 'validateNin']);
+            Route::post('fields/{key}', [KycController::class, 'saveField']);
             Route::post('documents', [KycController::class, 'storeDocument']);
             Route::post('submit', [KycController::class, 'submit']);
         });
@@ -137,6 +142,10 @@ Route::prefix('v1')->group(function () {
         Route::prefix('admin/onboarding')->middleware('backoffice.permission:kyc_applications,read')->group(function () {
             Route::get('stats', [OnboardingApplicationController::class, 'stats']);
             Route::get('tier-definitions', [OnboardingApplicationController::class, 'tierDefinitions']);
+            Route::put('tier-definitions/{tierDefinition}', [TierDefinitionController::class, 'update'])->middleware('backoffice.permission:kyc_applications,write');
+            Route::post('tier-definitions/{tierDefinition}/criteria', [TierDefinitionController::class, 'storeCriterion'])->middleware('backoffice.permission:kyc_applications,write');
+            Route::put('tier-criteria/{tierCriterion}', [TierDefinitionController::class, 'updateCriterion'])->middleware('backoffice.permission:kyc_applications,write');
+            Route::delete('tier-criteria/{tierCriterion}', [TierDefinitionController::class, 'destroyCriterion'])->middleware('backoffice.permission:kyc_applications,write');
             Route::post('verify/bvn', [OnboardingIdentityController::class, 'verifyBvn'])->middleware('backoffice.permission:kyc_applications,write');
             Route::post('verify/nin', [OnboardingIdentityController::class, 'verifyNin'])->middleware('backoffice.permission:kyc_applications,write');
             Route::get('/', [OnboardingApplicationController::class, 'index']);

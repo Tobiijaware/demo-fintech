@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Requests\Registration\CompleteRegistrationRequest;
 use App\Http\Requests\Registration\ResendCodeRequest;
+use App\Http\Requests\Registration\SaveRegistrationProfileRequest;
 use App\Http\Requests\Registration\StartRegistrationRequest;
+use App\Http\Requests\Registration\ValidateRegistrationBvnRequest;
 use App\Http\Requests\Registration\VerifyEmailRequest;
 use App\Services\Registration\RegistrationService;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +37,31 @@ class RegistrationController extends ApiController
         );
 
         return $this->success($data, 'Email verified successfully. Complete your account setup.');
+    }
+
+    public function criteria(): JsonResponse
+    {
+        return $this->success([
+            'tier' => 'tier_1',
+            'criteria' => $this->registrationService->signupCriteria(),
+        ]);
+    }
+
+    public function saveProfile(SaveRegistrationProfileRequest $request): JsonResponse
+    {
+        $profile = $this->registrationService->saveRegistrationProfile($request->validated());
+
+        return $this->success($profile, 'Profile saved. Verify your BVN to continue.');
+    }
+
+    public function validateBvn(ValidateRegistrationBvnRequest $request): JsonResponse
+    {
+        $result = $this->registrationService->validateRegistrationBvn(
+            $request->validated('email'),
+            $request->validated('bvn'),
+        );
+
+        return $this->success($result, 'BVN verified successfully.');
     }
 
     public function complete(CompleteRegistrationRequest $request): JsonResponse
