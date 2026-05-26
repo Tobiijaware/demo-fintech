@@ -115,6 +115,7 @@ class TierCriteriaService
             'criteria' => $criteria,
             'identity' => $identity,
             'documents' => $documents,
+            'limits' => $definition->limits ?? $this->defaultLimits($definition->applicant_type, $definition->tier),
         ];
     }
 
@@ -432,6 +433,7 @@ class TierCriteriaService
                             'identity_any_of' => $config['identity_any_of'] ?? [],
                             'documents' => $config['documents'] ?? [],
                         ],
+                        'limits' => $config['limits'] ?? null,
                     ],
                 );
 
@@ -465,6 +467,7 @@ class TierCriteriaService
             'label' => $data['label'] ?? $definition->label,
             'description' => $data['description'] ?? $definition->description,
             'active' => $data['active'] ?? $definition->active,
+            'limits' => array_key_exists('limits', $data) ? $data['limits'] : $definition->limits,
         ]);
 
         return $definition->fresh(['criteria']);
@@ -524,6 +527,20 @@ class TierCriteriaService
             ),
             default => false,
         };
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function defaultLimits(string $applicantType, string $tier): array
+    {
+        $limits = config("onboarding.tier_requirements.{$applicantType}.{$tier}.limits", []);
+
+        return [
+            'daily_transfer' => (float) ($limits['daily_transfer'] ?? 0),
+            'single_transfer' => (float) ($limits['single_transfer'] ?? 0),
+            'balance_limit' => (float) ($limits['balance_limit'] ?? 0),
+        ];
     }
 
     /**

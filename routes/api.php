@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\Admin\AmlDashboardController;
 use App\Http\Controllers\Api\Admin\AmlSanctionsController;
 use App\Http\Controllers\Api\Admin\StrFilingController;
 use App\Http\Controllers\Api\Admin\WalletFreezeController;
+use App\Http\Controllers\Api\Admin\WalletRestrictionController;
 use App\Http\Controllers\Api\Admin\SessionController;
 use App\Http\Controllers\Api\Admin\SearchController;
 use App\Http\Controllers\Api\Admin\SystemSettingsController;
@@ -68,6 +69,7 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('auth:api')->group(function () {
         Route::get('wallet/balance', [WalletController::class, 'balance']);
+        Route::get('wallet/limits', [WalletController::class, 'limits']);
         Route::post('wallet/resolve', [TransactionController::class, 'resolve']);
         Route::post('wallet/transfer', [TransactionController::class, 'transfer']);
         Route::get('transactions', [TransactionController::class, 'index']);
@@ -285,6 +287,10 @@ Route::prefix('v1')->group(function () {
             Route::get('policies', [ComplianceController::class, 'indexPolicies']);
             Route::get('policies/{reference}', [ComplianceController::class, 'showPolicy']);
             Route::get('policies/{reference}/download', [ComplianceController::class, 'downloadPolicy']);
+            Route::post('wallet-restrictions', [WalletRestrictionController::class, 'store'])
+                ->middleware('backoffice.permission:regulatory_filings,write');
+            Route::delete('wallet-restrictions/{walletFreeze}', [WalletRestrictionController::class, 'destroy'])
+                ->middleware('backoffice.permission:regulatory_filings,write');
         });
 
         Route::prefix('admin/aml')->group(function () {

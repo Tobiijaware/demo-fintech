@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\ApiController;
 use App\Models\User;
 use App\Services\Support\CustomerLookupService;
+use App\Services\Wallet\WalletRestrictionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -12,6 +13,7 @@ class CustomerLookupController extends ApiController
 {
     public function __construct(
         private CustomerLookupService $service,
+        private WalletRestrictionService $walletRestrictionService,
     ) {}
 
     public function search(Request $request): JsonResponse
@@ -31,6 +33,8 @@ class CustomerLookupController extends ApiController
                 'wallet_id' => $user->wallet?->id,
                 'wallet_account' => $user->wallet?->account_number,
                 'wallet_balance' => $user->wallet ? (float) $user->wallet->balance : null,
+                'wallet_status' => $user->wallet?->status->value,
+                'wallet_restriction' => $this->walletRestrictionService->activeRestrictionForUser($user),
                 'account_tier' => $user->account_tier,
                 'status' => $user->status->value,
             ])->values()->all(),

@@ -47,6 +47,9 @@ class WalletFreezeService
             'user_id' => $wallet->user_id,
             'case_id' => $case?->id,
             'reason' => $data['reason'],
+            'restriction_type' => 'full_freeze',
+            'customer_message' => $data['customer_message'] ?? $data['reason'],
+            'source' => 'aml',
             'frozen_by_id' => $maker->id,
             'active' => true,
         ]);
@@ -92,7 +95,17 @@ class WalletFreezeService
                 ->exists();
 
             if (! $otherActive) {
-                $wallet->update(['status' => WalletStatus::Active]);
+                $latest = WalletFreeze::query()
+                    ->where('wallet_id', $wallet->id)
+                    ->where('active', true)
+                    ->latest()
+                    ->first();
+
+                $wallet->update([
+                    'status' => $latest?->restriction_type === 'pnd'
+                        ? WalletStatus::Pnd
+                        : WalletStatus::Active,
+                ]);
             }
         }
 

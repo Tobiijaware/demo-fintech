@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Audit\AuditLogService;
 use App\Services\Auth\PinService;
+use App\Services\Wallet\TierLimitService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -28,6 +29,8 @@ class TransactionService
         private WalletService $walletService,
         private PinService $pinService,
         private AuditLogService $auditLog,
+        private TierLimitService $tierLimitService,
+        private WalletRestrictionService $walletRestrictionService,
     ) {}
 
     /**
@@ -80,6 +83,8 @@ class TransactionService
             throw new InvalidArgumentException('Minimum transfer amount is ₦'.number_format(self::MIN_TRANSFER, 0));
         }
 
+        $this->tierLimitService->assertTransferAllowed($sender, $amount);
+
         $resolved = $this->resolveWalletAccount($sender, $toAccount);
         $this->pinService->verify($sender, $pin);
 
@@ -89,6 +94,8 @@ class TransactionService
                 ->where('currency', 'NGN')
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $this->walletRestrictionService->assertDebitAllowed($senderWallet);
 
             $recipientWallet = Wallet::query()
                 ->where('account_number', $resolved['account_number'])
@@ -160,6 +167,13 @@ class TransactionService
             ]);
 
             $debit->update(['linked_transaction_id' => $credit->id]);
+
+            if ($recipient) {
+                $this->walletRestrictionService->checkBalanceLimitAfterCredit(
+                    $recipient->fresh(),
+                    $recipientWallet->fresh(),
+                );
+            }
 
             Transaction::query()->create([
                 'reference' => $feeRef,

@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\Agents\AgentProvisioningService;
 use App\Services\Audit\AuditLogService;
 use App\Services\Governance\MakerCheckerService;
+use App\Services\Wallet\WalletRestrictionService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -27,6 +28,7 @@ class OnboardingApplicationService
         private AuditLogService $auditLog,
         private AgentProvisioningService $agentProvisioning,
         private OnboardingIdentityService $onboardingIdentity,
+        private WalletRestrictionService $walletRestrictionService,
     ) {}
 
     public function generateReference(): string
@@ -239,6 +241,14 @@ class OnboardingApplicationService
                 'status' => UserStatus::Approved,
                 'account_tier' => $updated->tier->value,
             ]);
+
+            if ($updated->applicant_type === ApplicantType::Customer
+                && in_array($updated->tier->value, ['tier_2', 'tier_3'], true)) {
+                $user = User::query()->find($updated->user_id);
+                if ($user) {
+                    $this->walletRestrictionService->liftTierBalancePndForUser($user);
+                }
+            }
         }
 
         if ($updated->applicant_type === ApplicantType::Agent) {

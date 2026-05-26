@@ -28,6 +28,11 @@ return [
             'tier_1' => [
                 'label' => 'Tier 1 — Basic wallet',
                 'description' => 'Verified identity wallet with standard daily limits.',
+                'limits' => [
+                    'daily_transfer' => 50_000,
+                    'single_transfer' => 20_000,
+                    'balance_limit' => 500_000,
+                ],
                 'identity_any_of' => ['bvn'],
                 'documents' => [],
                 'criteria' => [
@@ -90,6 +95,11 @@ return [
             'tier_2' => [
                 'label' => 'Tier 2 — Verified customer',
                 'description' => 'Higher limits after identity and address verification.',
+                'limits' => [
+                    'daily_transfer' => 200_000,
+                    'single_transfer' => 100_000,
+                    'balance_limit' => 0,
+                ],
                 'identity_any_of' => ['bvn', 'nin'],
                 'documents' => ['utility_bill', 'directors_id'],
                 'criteria' => [
@@ -138,6 +148,11 @@ return [
             'tier_3' => [
                 'label' => 'Tier 3 — Premium',
                 'description' => 'Full limits with enhanced due diligence.',
+                'limits' => [
+                    'daily_transfer' => 1_000_000,
+                    'single_transfer' => 500_000,
+                    'balance_limit' => 0,
+                ],
                 'identity_any_of' => ['bvn', 'nin'],
                 'documents' => ['utility_bill', 'directors_id', 'bank_statement'],
             ],

@@ -15,6 +15,7 @@ class TierDefinition extends Model
         'active',
         'sort_order',
         'legacy_config',
+        'limits',
     ];
 
     protected function casts(): array
@@ -22,6 +23,7 @@ class TierDefinition extends Model
         return [
             'active' => 'boolean',
             'legacy_config' => 'array',
+            'limits' => 'array',
         ];
     }
 

@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Services\Auth\PinService;
 use App\Services\Governance\SessionService;
 use App\Services\Kyc\CustomerKycService;
+use App\Services\Wallet\TierLimitService;
+use App\Services\Wallet\WalletRestrictionService;
 use Illuminate\Http\JsonResponse;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 
@@ -21,6 +23,8 @@ class AuthController extends ApiController
         private PinService $pinService,
         private CustomerKycService $customerKycService,
         private SessionService $sessionService,
+        private TierLimitService $tierLimitService,
+        private WalletRestrictionService $walletRestrictionService,
     ) {}
 
     public function login(LoginRequest $request): JsonResponse
@@ -74,6 +78,8 @@ class AuthController extends ApiController
             $payload['kyc_progress'] = $this->customerKycService->progress($user);
             $payload['kyc_status'] = $payload['kyc_progress']['kyc_status'];
             $payload['account_tier'] = $payload['kyc_progress']['account_tier'];
+            $payload['transaction_limits'] = $this->tierLimitService->snapshot($user);
+            $payload['wallet_restriction'] = $this->walletRestrictionService->activeRestrictionForUser($user);
         }
 
         return $this->success($payload);

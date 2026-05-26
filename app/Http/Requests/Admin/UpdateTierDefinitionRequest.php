@@ -20,6 +20,10 @@ class UpdateTierDefinitionRequest extends FormRequest
             'label' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
             'active' => ['sometimes', 'boolean'],
+            'limits' => ['sometimes', 'array'],
+            'limits.daily_transfer' => ['sometimes', 'numeric', 'min:0'],
+            'limits.single_transfer' => ['sometimes', 'numeric', 'min:0'],
+            'limits.balance_limit' => ['sometimes', 'numeric', 'min:0'],
         ];
     }
 }
