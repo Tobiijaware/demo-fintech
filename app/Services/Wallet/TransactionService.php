@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Audit\AuditLogService;
 use App\Services\Auth\PinService;
+use App\Services\Treasury\FeeScheduleService;
 use App\Services\Wallet\TierLimitService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,7 +22,8 @@ use InvalidArgumentException;
 
 class TransactionService
 {
-    public const TRANSFER_FEE = 50.0;
+    /** @deprecated Use FeeScheduleService::DEFAULT_TRANSFER_FEE */
+    public const TRANSFER_FEE = FeeScheduleService::DEFAULT_TRANSFER_FEE;
 
     public const MIN_TRANSFER = 100.0;
 
@@ -31,7 +33,13 @@ class TransactionService
         private AuditLogService $auditLog,
         private TierLimitService $tierLimitService,
         private WalletRestrictionService $walletRestrictionService,
+        private FeeScheduleService $feeScheduleService,
     ) {}
+
+    public function transferFee(): float
+    {
+        return $this->feeScheduleService->walletTransferFee();
+    }
 
     /**
      * @return array{account_number: string, account_name: string, bank_name: string}
@@ -88,7 +96,9 @@ class TransactionService
         $resolved = $this->resolveWalletAccount($sender, $toAccount);
         $this->pinService->verify($sender, $pin);
 
-        return DB::transaction(function () use ($sender, $resolved, $amount, $remark) {
+        $transferFee = $this->transferFee();
+
+        return DB::transaction(function () use ($sender, $resolved, $amount, $remark, $transferFee) {
             $senderWallet = Wallet::query()
                 ->where('user_id', $sender->id)
                 ->where('currency', 'NGN')
@@ -102,7 +112,7 @@ class TransactionService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $totalDebit = $amount + self::TRANSFER_FEE;
+            $totalDebit = $amount + $transferFee;
 
             if ((float) $senderWallet->balance < $totalDebit) {
                 throw new InvalidArgumentException('Insufficient wallet balance for this transfer.');
@@ -129,7 +139,7 @@ class TransactionService
                 'type' => TransactionType::WalletTransferOut,
                 'direction' => TransactionDirection::Debit,
                 'amount' => $amount,
-                'fee' => self::TRANSFER_FEE,
+                'fee' => $transferFee,
                 'currency' => 'NGN',
                 'status' => TransactionStatus::Success,
                 'counterparty_name' => $recipientName,
@@ -182,7 +192,7 @@ class TransactionService
                 'wallet_id' => $senderWallet->id,
                 'type' => TransactionType::TransferFee,
                 'direction' => TransactionDirection::Debit,
-                'amount' => self::TRANSFER_FEE,
+                'amount' => $transferFee,
                 'fee' => 0,
                 'currency' => 'NGN',
                 'status' => TransactionStatus::Success,
@@ -196,7 +206,7 @@ class TransactionService
                 'transaction_reference' => $debitRef,
                 'session_id' => $sessionId,
                 'amount' => $amount,
-                'fee' => self::TRANSFER_FEE,
+                'fee' => $transferFee,
                 'recipient' => $resolved,
                 'balance' => (float) $senderWallet->fresh()->balance,
             ];

@@ -151,11 +151,22 @@ class TierCriteriaService
         }
 
         $identityKeys = collect($requirements['identity'] ?? [])->pluck('key')->all();
-        $identityDone = false;
-        foreach ($identityKeys as $key) {
-            if (! empty($criteriaCompleted[$key]) || ($key === 'bvn' && ! empty($user->bvn)) || ($key === 'nin' && ! empty($user->nin))) {
-                $identityDone = true;
-                break;
+        $identityCriteria = collect($requirements['criteria'] ?? [])
+            ->filter(fn (array $c) => str_starts_with($c['type'] ?? '', 'identity_'))
+            ->where('required', true)
+            ->values();
+
+        if ($identityCriteria->isNotEmpty()) {
+            $identityDone = $identityCriteria->every(
+                fn (array $c) => ! empty($criteriaCompleted[$c['key'] ?? '']),
+            );
+        } else {
+            $identityDone = false;
+            foreach ($identityKeys as $key) {
+                if (! empty($criteriaCompleted[$key]) || ($key === 'bvn' && ! empty($user->bvn)) || ($key === 'nin' && ! empty($user->nin))) {
+                    $identityDone = true;
+                    break;
+                }
             }
         }
 
@@ -189,6 +200,17 @@ class TierCriteriaService
                 if (! $anyDone) {
                     return false;
                 }
+
+                continue;
+            }
+
+            if ($ruleGroup && str_ends_with((string) $ruleGroup, '_all')) {
+                foreach (collect($items)->where('required', true) as $item) {
+                    if (empty($completed['criteria'][$item['key'] ?? ''])) {
+                        return false;
+                    }
+                }
+
                 continue;
             }
 
@@ -258,6 +280,26 @@ class TierCriteriaService
                     'type' => 'identity_group',
                     'label' => $this->identityGroupLabel($groupItems),
                     'description' => $this->groupDescription($groupItems),
+                ]);
+
+                continue;
+            }
+
+            if ($ruleGroup && str_ends_with((string) $ruleGroup, '_all')) {
+                if (isset($seenGroups[$ruleGroup])) {
+                    continue;
+                }
+                $seenGroups[$ruleGroup] = true;
+                if ($this->isAllGroupComplete($ruleGroup, $criteria, $this->completedSnapshot($user, $uploaded, $criteria))) {
+                    continue;
+                }
+                $groupItems = collect($criteria)->where('rule_group', $ruleGroup)->values()->all();
+                $obligations[] = $this->formatObligation([
+                    ...$criterion,
+                    'key' => $ruleGroup,
+                    'type' => 'identity_group',
+                    'label' => $this->identityGroupLabel($groupItems, requireAll: true),
+                    'description' => $this->groupDescription($groupItems, requireAll: true),
                 ]);
 
                 continue;
@@ -371,22 +413,25 @@ class TierCriteriaService
         ];
     }
 
-    /**
-     * @param  array<int, array<string, mixed>>  $groupItems
-     */
-    protected function identityGroupLabel(array $groupItems): string
+    protected function identityGroupLabel(array $groupItems, bool $requireAll = false): string
     {
         if ($groupItems === []) {
             return 'Identity verification';
         }
 
-        return collect($groupItems)->pluck('label')->filter()->implode(' or ');
+        $labels = collect($groupItems)->pluck('label')->filter()->values();
+
+        if ($requireAll && $labels->count() > 1) {
+            return $labels->implode(' and ');
+        }
+
+        return $labels->implode(' or ');
     }
 
     /**
      * @param  array<int, array<string, mixed>>  $groupItems
      */
-    protected function groupDescription(array $groupItems): ?string
+    protected function groupDescription(array $groupItems, bool $requireAll = false): ?string
     {
         if (count($groupItems) === 1) {
             return $groupItems[0]['description'] ?? null;
@@ -398,7 +443,24 @@ class TierCriteriaService
             ->values()
             ->all();
 
-        return $descriptions === [] ? null : implode(' ', $descriptions);
+        if ($descriptions === []) {
+            return $requireAll
+                ? 'Complete all identity checks listed below.'
+                : null;
+        }
+
+        return implode($requireAll ? ' ' : ' ', $descriptions);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $criteria
+     */
+    public function isAllGroupComplete(string $ruleGroup, array $criteria, array $completed): bool
+    {
+        return collect($criteria)
+            ->where('rule_group', $ruleGroup)
+            ->where('required', true)
+            ->every(fn (array $criterion) => ! empty($completed['criteria'][$criterion['key'] ?? '']));
     }
 
     /**

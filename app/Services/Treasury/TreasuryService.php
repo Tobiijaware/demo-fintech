@@ -294,6 +294,34 @@ class TreasuryService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     */
+    public function updateFeeSchedule(FeeSchedule $schedule, array $data): FeeSchedule
+    {
+        $updates = [];
+
+        foreach (['product_label', 'fee_type', 'rate_or_amount', 'effective_from', 'active'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $updates[$field] = $data[$field];
+            }
+        }
+
+        if (isset($updates['fee_type']) && ! in_array($updates['fee_type'], ['flat', 'percent'], true)) {
+            throw new InvalidArgumentException('Fee type must be flat or percent.');
+        }
+
+        if (isset($updates['rate_or_amount']) && (float) $updates['rate_or_amount'] < 0) {
+            throw new InvalidArgumentException('Rate or amount cannot be negative.');
+        }
+
+        if ($updates !== []) {
+            $schedule->update($updates);
+        }
+
+        return $schedule->fresh();
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      */
     public function listApprovals(array $filters = []): LengthAwarePaginator

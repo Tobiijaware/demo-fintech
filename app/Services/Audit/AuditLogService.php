@@ -20,6 +20,7 @@ class AuditLogService
         'transaction.',
         'operations.',
         'settlement.',
+        'treasury.',
         'compliance.',
         'aml.',
         'settings.',

@@ -16,6 +16,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Audit\AuditLogService;
+use App\Services\Treasury\FeeScheduleService;
 use App\Services\Wallet\TransactionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,6 +28,7 @@ class AgentTransactionService
 
     public function __construct(
         private AuditLogService $auditLog,
+        private FeeScheduleService $feeScheduleService,
     ) {}
 
     /**
@@ -242,7 +244,7 @@ class AgentTransactionService
             throw new InvalidArgumentException('Sender and recipient accounts must be different.');
         }
 
-        $fee = TransactionService::TRANSFER_FEE;
+        $fee = $this->feeScheduleService->walletTransferFee();
         $totalDebit = $amount + $fee;
 
         return DB::transaction(function () use ($agent, $terminal, $from, $to, $amount, $fee, $totalDebit, $actor, $remark) {

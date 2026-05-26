@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Enums\AgentCommissionStatus;
 use App\Enums\ApprovalRequestStatus;
 use App\Http\Controllers\Api\ApiController;
+use App\Http\Requests\Admin\UpdateFeeScheduleRequest;
 use App\Models\AgentCommission;
 use App\Models\ApprovalRequest;
+use App\Models\FeeSchedule;
 use App\Models\FloatPosition;
+use App\Services\Audit\AuditLogService;
 use App\Services\Treasury\TreasuryApprovalService;
 use App\Services\Treasury\TreasuryService;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +22,7 @@ class TreasuryController extends ApiController
     public function __construct(
         private TreasuryService $treasury,
         private TreasuryApprovalService $approvals,
+        private AuditLogService $auditLog,
     ) {}
 
     public function stats(): JsonResponse
@@ -175,17 +179,41 @@ class TreasuryController extends ApiController
         $paginator = $this->treasury->listFeeSchedules($request->only(['active', 'per_page']));
 
         return $this->success([
-            'items' => collect($paginator->items())->map(fn ($row) => [
-                'id' => $row->id,
-                'product_key' => $row->product_key,
-                'product_label' => $row->product_label,
-                'fee_type' => $row->fee_type,
-                'rate_or_amount' => (float) $row->rate_or_amount,
-                'effective_from' => $row->effective_from?->toDateString(),
-                'active' => (bool) $row->active,
-            ]),
+            'items' => collect($paginator->items())->map(fn ($row) => $this->formatFeeSchedule($row)),
             'pagination' => $this->pagination($paginator),
         ]);
+    }
+
+    public function updateFeeSchedule(UpdateFeeScheduleRequest $request, FeeSchedule $feeSchedule): JsonResponse
+    {
+        $before = [
+            'rate_or_amount' => (float) $feeSchedule->rate_or_amount,
+            'fee_type' => $feeSchedule->fee_type,
+            'active' => (bool) $feeSchedule->active,
+            'effective_from' => $feeSchedule->effective_from?->toDateString(),
+        ];
+
+        $updated = $this->treasury->updateFeeSchedule($feeSchedule, $request->validated());
+
+        $this->auditLog->record(
+            auth('api')->user(),
+            'treasury.fee_schedule.updated',
+            'fee_schedule',
+            (string) $updated->id,
+            "Updated {$updated->product_label} fee schedule",
+            [
+                'product_key' => $updated->product_key,
+                'before' => $before,
+                'after' => [
+                    'rate_or_amount' => (float) $updated->rate_or_amount,
+                    'fee_type' => $updated->fee_type,
+                    'active' => (bool) $updated->active,
+                    'effective_from' => $updated->effective_from?->toDateString(),
+                ],
+            ],
+        );
+
+        return $this->success($this->formatFeeSchedule($updated), 'Fee schedule updated.');
     }
 
     public function commissions(Request $request): JsonResponse
@@ -313,6 +341,22 @@ class TreasuryController extends ApiController
             $this->formatTreasuryApproval($updated),
             'Approval request rejected.',
         );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatFeeSchedule(FeeSchedule $row): array
+    {
+        return [
+            'id' => $row->id,
+            'product_key' => $row->product_key,
+            'product_label' => $row->product_label,
+            'fee_type' => $row->fee_type,
+            'rate_or_amount' => (float) $row->rate_or_amount,
+            'effective_from' => $row->effective_from?->toDateString(),
+            'active' => (bool) $row->active,
+        ];
     }
 
     /**

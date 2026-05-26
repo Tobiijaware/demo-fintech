@@ -363,6 +363,8 @@ Route::prefix('v1')->group(function () {
                 ->middleware('backoffice.permission:fee_schedules,read');
             Route::get('fee-schedules', [TreasuryController::class, 'feeSchedules'])
                 ->middleware('backoffice.permission:fee_schedules,read');
+            Route::put('fee-schedules/{feeSchedule}', [TreasuryController::class, 'updateFeeSchedule'])
+                ->middleware('backoffice.permission:fee_schedules,write');
 
             Route::get('commissions', [TreasuryController::class, 'commissions'])
                 ->middleware('backoffice.permission:commission_payout,read');

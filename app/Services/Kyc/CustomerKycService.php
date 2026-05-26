@@ -446,10 +446,45 @@ class CustomerKycService
 
     protected function resolveKycStatus(User $user, OnboardingApplication $application): string
     {
+        $currentTier = AccountTier::tryFrom($user->account_tier ?? AccountTier::Tier1->value)
+            ?? AccountTier::Tier1;
+        $targetTier = $application->tier;
+        $isUpgradeTarget = $currentTier->isLowerThan($targetTier);
+
+        if ($isUpgradeTarget) {
+            return match ($application->status) {
+                OnboardingStatus::Approved => $currentTier === $targetTier ? 'verified' : 'pending',
+                OnboardingStatus::PendingReview,
+                OnboardingStatus::Submitted,
+                OnboardingStatus::OnHold,
+                OnboardingStatus::Queried => 'pending',
+                OnboardingStatus::Rejected => 'rejected',
+                default => $this->baseTierVerificationStatus($user),
+            };
+        }
+
         if ($application->status === OnboardingStatus::Approved) {
             return 'verified';
         }
 
+        if (in_array($application->status, [
+            OnboardingStatus::PendingReview,
+            OnboardingStatus::Submitted,
+            OnboardingStatus::OnHold,
+            OnboardingStatus::Queried,
+        ], true)) {
+            return 'pending';
+        }
+
+        if ($application->status === OnboardingStatus::Rejected) {
+            return 'rejected';
+        }
+
+        return $this->baseTierVerificationStatus($user);
+    }
+
+    protected function baseTierVerificationStatus(User $user): string
+    {
         $hasApprovedCustomerApplication = OnboardingApplication::query()
             ->where('user_id', $user->id)
             ->where('applicant_type', ApplicantType::Customer)
@@ -460,19 +495,8 @@ class CustomerKycService
             return 'verified';
         }
 
-        // Mobile tier 1 signup (email + profile + BVN) counts as verified for tier 1.
         if ($this->hasCompletedTier1Signup($user)) {
             return 'verified';
-        }
-
-        if (in_array($application->status, [OnboardingStatus::PendingReview, OnboardingStatus::Submitted, OnboardingStatus::OnHold], true)) {
-            return 'pending';
-        }
-        if ($application->status === OnboardingStatus::Queried) {
-            return 'pending';
-        }
-        if ($application->status === OnboardingStatus::Rejected) {
-            return 'rejected';
         }
 
         return $user->status === UserStatus::Approved ? 'verified' : 'not_started';
