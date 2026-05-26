@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
             MakerCheckerPolicySeeder::class,
             DemoWalletSeeder::class,
             OnboardingApplicationsSeeder::class,
+            OnboardingDocumentsSeeder::class,
             AgentsSeeder::class,
             AgentCommissionsSeeder::class,
             TreasurySeeder::class,

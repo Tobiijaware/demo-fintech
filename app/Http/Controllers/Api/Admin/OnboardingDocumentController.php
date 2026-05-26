@@ -88,7 +88,8 @@ class OnboardingDocumentController extends ApiController
 
     public function show(OnboardingDocument $onboardingDocument): Response
     {
-        $contents = $this->storage->get($onboardingDocument->storage_path);
+        $onboardingDocument->loadMissing('application');
+        $contents = $this->storage->resolveContents($onboardingDocument);
 
         if ($contents === null) {
             return response('Document file not found.', 404);
